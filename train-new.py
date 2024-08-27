@@ -311,9 +311,9 @@ while True:
                 for param in model.parameters():
                     if param.grad is not None:
                         grad = param.grad.clone().detach().cpu().view(-1)
-                        print('grad ', grad)
                         grads.append(grad)
                 prev = torch.cat(grads)
+                print('1', prev.shape)
             if micro_step > 0:
                 grads = []
                 for param in model.parameters():
@@ -321,6 +321,7 @@ while True:
                         grad = param.grad.clone().detach().cpu().view(-1)
                         grads.append(grad)
                 current = torch.cat(grads)
+                print('2', current.shape)
                 gradient = (current - prev) * gradient_accumulation_steps
                 prev = current.clone()
                 gradients.append(gradient)
