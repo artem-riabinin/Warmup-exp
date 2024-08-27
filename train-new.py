@@ -318,8 +318,8 @@ while True:
         for i in range(X.size(0)):
             x_sample = X[i:i+1]
             y_sample = Y[i:i+1]
-            with torch.no_grad():
-                sample_logits, sample_loss = model(x_sample, y_sample)         
+            optimizer.zero_grad()
+            sample_logits, sample_loss = model(x_sample, y_sample)         
             sample_loss.backward()
             grads = []
             for param in model.parameters():
@@ -328,7 +328,6 @@ while True:
                       grads.append(grad)
             grads = torch.cat(grads)
             gradients.append(grads)
-            model.zero_grad()
         gradients_tensor = torch.stack(gradients)
         variance = gradients_tensor.var(dim=0)
         norm_of_variance = torch.norm(variance)
