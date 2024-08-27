@@ -290,7 +290,7 @@ while True:
             grads = []
             for param in model.parameters():
                 if param.grad is not None:
-                      grad = param.grad.clone().detach().cpu().view(-1)
+                      grad = param.grad.clone().detach().view(-1)
                       grads.append(grad)
             grads = torch.cat(grads)
             gradients.append(grads)
