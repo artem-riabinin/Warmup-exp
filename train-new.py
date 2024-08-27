@@ -33,7 +33,7 @@ from model import GPTConfig, GPT
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
 out_dir = 'out'
-eval_interval = 2000
+eval_interval = 200
 log_interval = 1
 eval_iters = 200
 eval_only = False # if True, script exits right after the first eval
@@ -289,6 +289,7 @@ while True:
 
     # forward backward update, with optional gradient accumulation to simulate larger batch size
     # and using the GradScaler if data type is float16
+    gradients = []
     for micro_step in range(gradient_accumulation_steps):
         if ddp:
             # in DDP training we only need to sync gradients at the last micro step.
@@ -304,14 +305,14 @@ while True:
         # backward pass, with gradient scaling if training in fp16
         scaler.scale(loss).backward()
         
-        if iter_num % eval_interval == 0 and master_process:
-            gradients = []
-            grads = []
-            for param in model.parameters():
-                if param.grad is not None:
-                    grad = param.grad.clone().detach().cpu().view(-1)
-                    grads.append(grad)
-            prev = torch.cat(grads)
+        if iter_num % eval_interval == 0 and master_process:      
+            if micro_step == 0:
+                grads = []
+                for param in model.parameters():
+                    if param.grad is not None:
+                        grad = param.grad.clone().detach().cpu().view(-1)
+                        grads.append(grad)
+                prev = torch.cat(grads)
             if micro_step > 0:
                 grads = []
                 for param in model.parameters():
@@ -320,13 +321,16 @@ while True:
                         grads.append(grad)
                 current = torch.cat(grads)
                 gradient = (current - prev) * gradient_accumulation_steps
-                prev = current
+                prev = current.clone()
                 gradients.append(gradient)
-                gradients_tensor = torch.stack(gradients)
-                variance = gradients_tensor.var(dim=0)
-                norm_of_variance = torch.norm(variance)
-                if wandb_log:
-                    wandb.log({"variance": norm_of_variance,})       
+        
+        if iter_num % eval_interval == 0 and master_process:        
+            print('grad.shape', gradients.shape)
+            gradients_tensor = torch.stack(gradients)
+            variance = gradients_tensor.var(dim=0)
+            norm_of_variance = torch.norm(variance)
+            if wandb_log:
+                wandb.log({"variance": norm_of_variance,})       
         
     # clip the gradient
     if grad_clip != 0.0:
