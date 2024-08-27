@@ -311,6 +311,7 @@ while True:
                 for param in model.parameters():
                     if param.grad is not None:
                         grad = param.grad.clone().detach().cpu().view(-1)
+                        print('grad ', grad)
                         grads.append(grad)
                 prev = torch.cat(grads)
             if micro_step > 0:
