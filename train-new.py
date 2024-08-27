@@ -33,14 +33,14 @@ from model import GPTConfig, GPT
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
 out_dir = 'out'
-eval_interval = 200
+eval_interval = 500
 log_interval = 1
 eval_iters = 200
 eval_only = False # if True, script exits right after the first eval
 always_save_checkpoint = True # if True, always save a checkpoint after each eval
 init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
 # wandb logging
-wandb_log = False # disabled by default
+wandb_log = True # disabled by default
 wandb_project = 'owt'
 wandb_run_name = 'gpt2' # 'run' + str(time.time())
 # data
@@ -49,7 +49,7 @@ gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
 batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 1024
 # model
-n_layer = 6
+n_layer = 12
 n_head = 12
 n_embd = 768
 dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
@@ -289,10 +289,7 @@ while True:
 
     # forward backward update, with optional gradient accumulation to simulate larger batch size
     # and using the GradScaler if data type is float16
-    gradients = []
-    print('acc_step ', gradient_accumulation_steps)
     for micro_step in range(gradient_accumulation_steps):
-        print(micro_step)
         if ddp:
             # in DDP training we only need to sync gradients at the last micro step.
             # the official way to do this is with model.no_sync() context manager, but
@@ -306,36 +303,6 @@ while True:
         X, Y = get_batch('train')
         # backward pass, with gradient scaling if training in fp16
         scaler.scale(loss).backward()
-        
-        if iter_num % eval_interval == 0 and master_process:      
-            if micro_step == 0:
-                grads = []
-                for param in model.parameters():
-                    if param.grad is not None:
-                        grad = param.grad.clone().detach().cpu().view(-1)
-                        grads.append(grad)
-                prev = torch.cat(grads)
-                print('1', prev.shape)
-            if micro_step > 0:
-                grads = []
-                for param in model.parameters():
-                    if param.grad is not None:
-                        grad = param.grad.clone().detach().cpu().view(-1)
-                        grads.append(grad)
-                current = torch.cat(grads)
-                print('2', current.shape)
-                gradient = (current - prev) * gradient_accumulation_steps
-                prev = current.clone()
-                gradients.append(gradient)
-        
-        if iter_num % eval_interval == 0 and master_process:        
-            gradients_tensor = torch.stack(gradients)
-            print('gradients_tensor.shape: ', gradients_tensor.shape)
-            variance = gradients_tensor.var(dim=0)
-            norm_of_variance = torch.norm(variance)
-            if wandb_log:
-                wandb.log({"variance": norm_of_variance,})       
-        
     # clip the gradient
     if grad_clip != 0.0:
         scaler.unscale_(optimizer)
@@ -343,6 +310,32 @@ while True:
     # step the optimizer and scaler if training in fp16
     scaler.step(optimizer)
     scaler.update()
+    
+    
+    
+    if iter_num % eval_interval == 0 and master_process:
+        gradients = []
+        for i in range(X.size(0)):
+            x_sample = X[i:i+1]
+            y_sample = Y[i:i+1]
+            with torch.no_grad():
+                sample_logits, sample_loss = model(x_sample, y_sample)         
+            sample_loss.backward()
+            grads = []
+            for param in model.parameters():
+                if param.grad is not None:
+                      grad = param.grad.clone().detach().cpu().view(-1)
+                      grads.append(grad)
+            grads = torch.cat(grads)
+            gradients.append(grads)
+            model.zero_grad()
+        gradients_tensor = torch.stack(gradients)
+        variance = gradients_tensor.var(dim=0)
+        norm_of_variance = torch.norm(variance)
+        if wandb_log: wandb.log({"variance": norm_of_variance,})
+    
+    
+    
     # flush the gradients as soon as we can, no need for this memory anymore
     optimizer.zero_grad(set_to_none=True)
 
