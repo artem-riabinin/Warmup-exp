@@ -129,6 +129,23 @@ def get_batch(split):
     else:
         x, y = x.to(device), y.to(device)
     return x, y
+    
+def get_big_batch(split):
+    # We recreate np.memmap every batch to avoid a memory leak, as per
+    # https://stackoverflow.com/questions/45132940/numpy-memmap-memory-usage-want-to-iterate-once/61472122#61472122
+    if split == 'train':
+        data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
+    else:
+        data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
+    ix = torch.randint(len(data) - block_size, (batch_size * 4,))
+    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
+    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
+    if device_type == 'cuda':
+        # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
+        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+    else:
+        x, y = x.to(device), y.to(device)
+    return x, y
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
 iter_num = 0
@@ -262,10 +279,11 @@ while True:
      
      
     if iter_num % eval_interval == 0 and master_process:
+        X_big, Y_big = get_big_batch('train')
         gradients = []
-        for i in range(X.size(0)):
-            x_sample = X[i:i+1]
-            y_sample = Y[i:i+1]
+        for i in range(X_big.size(0)):
+            x_sample = X_big[i:i+1]
+            y_sample = Y_big[i:i+1]
             optimizer.zero_grad()
             sample_logits, sample_loss = model(x_sample, y_sample)         
             sample_loss.backward()
