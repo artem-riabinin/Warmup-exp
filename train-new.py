@@ -49,7 +49,7 @@ gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
 batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 1024
 # model
-n_layer = 12
+n_layer = 6
 n_head = 12
 n_embd = 768
 dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
@@ -258,6 +258,31 @@ while True:
     lr = get_lr(iter_num) if decay_lr else learning_rate
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
+        
+     
+     
+    if iter_num % eval_interval == 0 and master_process:
+        gradients = []
+        for i in range(X.size(0)):
+            x_sample = X[i:i+1]
+            y_sample = Y[i:i+1]
+            optimizer.zero_grad()
+            sample_logits, sample_loss = model(x_sample, y_sample)         
+            sample_loss.backward()
+            grads = []
+            for param in model.parameters():
+                if param.grad is not None:
+                      grad = param.grad.clone().detach().cpu().view(-1)
+                      grads.append(grad)
+            grads = torch.cat(grads)
+            gradients.append(grads)
+        print('variance_over_batch_size: ', i + 1)
+        gradients_tensor = torch.stack(gradients)
+        variance = gradients_tensor.var(dim=0)
+        norm_of_variance = torch.norm(variance)
+        optimizer.zero_grad()
+     
+     
 
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
@@ -270,6 +295,7 @@ while True:
                 "val/loss": losses['val'],
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage
+                "variance": norm_of_variance.item(),
             })
         if losses['val'] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses['val']
@@ -309,32 +335,7 @@ while True:
         torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
     # step the optimizer and scaler if training in fp16
     scaler.step(optimizer)
-    scaler.update()
-    
-    
-    
-    if iter_num % eval_interval == 0 and master_process:
-        gradients = []
-        for i in range(X.size(0)):
-            x_sample = X[i:i+1]
-            y_sample = Y[i:i+1]
-            optimizer.zero_grad()
-            sample_logits, sample_loss = model(x_sample, y_sample)         
-            sample_loss.backward()
-            grads = []
-            for param in model.parameters():
-                if param.grad is not None:
-                      grad = param.grad.clone().detach().cpu().view(-1)
-                      grads.append(grad)
-            grads = torch.cat(grads)
-            gradients.append(grads)
-        gradients_tensor = torch.stack(gradients)
-        variance = gradients_tensor.var(dim=0)
-        norm_of_variance = torch.norm(variance)
-        print('norm: ', norm_of_variance)
-    
-    
-    
+    scaler.update()    
     # flush the gradients as soon as we can, no need for this memory anymore
     optimizer.zero_grad(set_to_none=True)
 
