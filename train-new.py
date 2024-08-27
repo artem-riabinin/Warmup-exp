@@ -325,8 +325,8 @@ while True:
                 gradients.append(gradient)
         
         if iter_num % eval_interval == 0 and master_process:        
-            print('grad.shape', gradients.shape)
             gradients_tensor = torch.stack(gradients)
+            print('gradients_tensor.shape: ', gradients_tensor.shape)
             variance = gradients_tensor.var(dim=0)
             norm_of_variance = torch.norm(variance)
             if wandb_log:
