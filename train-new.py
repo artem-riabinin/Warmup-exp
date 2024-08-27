@@ -137,7 +137,7 @@ def get_big_batch(split):
         data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
     else:
         data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
-    ix = torch.randint(len(data) - block_size, (batch_size * 4,))
+    ix = torch.randint(len(data) - block_size, (batch_size * 2,))
     x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
     y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
     if device_type == 'cuda':
@@ -290,11 +290,10 @@ while True:
             grads = []
             for param in model.parameters():
                 if param.grad is not None:
-                      grad = param.grad.clone().detach().view(-1)
+                      grad = param.grad.clone().detach().cpu().view(-1)
                       grads.append(grad)
             grads = torch.cat(grads)
             gradients.append(grads)
-        print('variance_over_batch_size: ', i + 1)
         gradients_tensor = torch.stack(gradients)
         variance = gradients_tensor.var(dim=0)
         norm_of_variance = torch.norm(variance)
