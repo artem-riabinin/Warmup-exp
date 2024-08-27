@@ -284,7 +284,7 @@ while True:
         for i in range(X_big.size(0)):
             x_sample = X_big[i:i+1]
             y_sample = Y_big[i:i+1]
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             sample_logits, sample_loss = model(x_sample, y_sample)         
             sample_loss.backward()
             grads = []
@@ -297,7 +297,7 @@ while True:
         gradients_tensor = torch.stack(gradients)
         variance = gradients_tensor.var(dim=0)
         norm_of_variance = torch.norm(variance)
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
      
      
 
