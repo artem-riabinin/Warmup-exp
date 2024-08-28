@@ -63,7 +63,7 @@ beta2 = 0.95
 grad_clip = 1.0 # clip gradients at this value, or disable if == 0.0
 # learning rate decay settings
 decay_lr = True # whether to decay the learning rate
-warmup_iters = 2000 # how many steps to warm up for
+warmup_iters = 0 # how many steps to warm up for
 lr_decay_iters = 600000 # should be ~= max_iters per Chinchilla
 min_lr = 6e-5 # minimum learning rate, should be ~= learning_rate/10 per Chinchilla
 # DDP settings
@@ -130,14 +130,14 @@ def get_batch(split):
         x, y = x.to(device), y.to(device)
     return x, y
     
-def get_big_batch(split):
+def get_custom_batch(split, custom_batch_size):
     # We recreate np.memmap every batch to avoid a memory leak, as per
     # https://stackoverflow.com/questions/45132940/numpy-memmap-memory-usage-want-to-iterate-once/61472122#61472122
     if split == 'train':
         data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
     else:
         data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
-    ix = torch.randint(len(data) - block_size, (batch_size * 2,))
+    ix = torch.randint(len(data) - block_size, (custom_batch_size,))
     x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
     y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
     if device_type == 'cuda':
@@ -276,30 +276,20 @@ while True:
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
         
-     
-     
     if iter_num % eval_interval == 0 and master_process:
-        X_big, Y_big = get_big_batch('train')
+        custom_batch_size = 24
+        X_custom, Y_custom = get_custom_batch('val', custom_batch_size)
         gradients = []
-        for i in range(X_big.size(0)):
-            x_sample = X_big[i:i+1]
-            y_sample = Y_big[i:i+1]
-            model.zero_grad()
+        for i in range(X_custom.size(0)):
+            x_sample = X_custom[i:i+1]
+            y_sample = Y_custom[i:i+1]
             sample_logits, sample_loss = model(x_sample, y_sample)         
-            sample_loss.backward()
-            grads = []
-            for param in model.parameters():
-                if param.grad is not None:
-                      grad = param.grad.clone().detach().cpu().view(-1)
-                      grads.append(grad)
-            grads = torch.cat(grads)
+            grads = torch.autograd.grad(outputs=sample_loss, inputs=model.parameters(), create_graph=False, retain_graph=False)
+            grads = torch.cat([grad.clone().detach().cpu().view(-1) for grad in grads if grad is not None])
             gradients.append(grads)
         gradients_tensor = torch.stack(gradients)
         variance = gradients_tensor.var(dim=0)
         norm_of_variance = torch.norm(variance)
-        model.zero_grad()
-     
-     
 
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
