@@ -130,7 +130,22 @@ def get_batch(split):
         x, y = x.to(device), y.to(device)
     return x, y
     
-
+def get_big_batch(split):
+    # We recreate np.memmap every batch to avoid a memory leak, as per
+    # https://stackoverflow.com/questions/45132940/numpy-memmap-memory-usage-want-to-iterate-once/61472122#61472122
+    if split == 'train':
+        data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
+    else:
+        data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
+    ix = torch.randint(len(data) - block_size, (batch_size * 2,))
+    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
+    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
+    if device_type == 'cuda':
+        # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
+        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+    else:
+        x, y = x.to(device), y.to(device)
+    return x, y
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
 iter_num = 0
@@ -263,6 +278,19 @@ while True:
         
      
      
+    if iter_num % eval_interval == 0 and master_process:
+        X_big, Y_big = get_big_batch('train')
+        gradients = []
+        for i in range(X_big.size(0)):
+            x_sample = X_big[i:i+1]
+            y_sample = Y_big[i:i+1]
+            sample_logits, sample_loss = model(x_sample, y_sample)         
+            grads = torch.autograd.grad(outputs=sample_loss, inputs=model.parameters(), create_graph=False, retain_graph=False)
+            grads = torch.cat([grad.clone().detach().cpu().view(-1) for grad in grads if grad is not None])
+            gradients.append(grads)
+        gradients_tensor = torch.stack(gradients)
+        variance = gradients_tensor.var(dim=0)
+        norm_of_variance = torch.norm(variance)
 
      
      
@@ -278,6 +306,7 @@ while True:
                 "val/loss": losses['val'],
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage
+                "variance": norm_of_variance.item(),
             })
         if losses['val'] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses['val']
