@@ -287,6 +287,7 @@ while True:
             sample_logits, sample_loss = model(x_sample, y_sample)         
             grads = torch.autograd.grad(outputs=sample_loss, inputs=model.parameters(), create_graph=False, retain_graph=False)
             grads = torch.cat([grad.clone().detach().cpu().view(-1) for grad in grads if grad is not None])
+            print(grads.shape)
             gradients.append(grads)
         gradients_tensor = torch.stack(gradients)
         variance = gradients_tensor.var(dim=0)
