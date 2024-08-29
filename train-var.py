@@ -263,12 +263,12 @@ while True:
                 sample_logits, sample_loss = model(x_sample, y_sample)         
             grads = torch.autograd.grad(outputs=sample_loss, inputs=model.parameters(), create_graph=False, retain_graph=False)
             grads = [grad.clone().detach().cpu().view(-1) for grad in grads if grad is not None]
-            gradients.extend(grads)
+            gradients.append(grads)
+            del grads
         gradients_tensor = torch.stack(gradients)
         variance = gradients_tensor.var(dim=0)
         norm_of_variance = torch.norm(variance)
-        del grads, gradients, gradients_tensor
-        torch.cuda.empty_cache()
+        del gradients, gradients_tensor
 #####
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
