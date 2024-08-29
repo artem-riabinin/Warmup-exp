@@ -266,6 +266,7 @@ while True:
         gradients_tensor = torch.stack(gradients)
         variance = gradients_tensor.var(dim=0)
         norm_of_variance = torch.norm(variance)
+        optimizer.zero_grad(set_to_none=True)
 
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
