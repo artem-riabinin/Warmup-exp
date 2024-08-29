@@ -253,7 +253,7 @@ local_iter_num = 0 # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
-
+#####
     if iter_num % eval_interval == 0 and master_process:
         gradients = []
         for i in range(X.size(0)):
@@ -263,11 +263,11 @@ while True:
             grads = torch.autograd.grad(outputs=sample_loss, inputs=model.parameters(), create_graph=False, retain_graph=False)
             grads = torch.cat([grad.clone().detach().cpu().view(-1) for grad in grads if grad is not None])
             gradients.append(grads)
-        gradients_tensor = torch.stack(gradients)
+        gradients_tensor = torch.stack(gradients).cpu()
         variance = gradients_tensor.var(dim=0)
         norm_of_variance = torch.norm(variance)
-        optimizer.zero_grad(set_to_none=True)
-
+        torch.cuda.empty_cache()
+#####
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
     for param_group in optimizer.param_groups:
