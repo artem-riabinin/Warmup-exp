@@ -254,18 +254,20 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
 #####
-    if iter_num % eval_interval == 0 and master_process:
+    if iter_num % eval_interval == 0:
         gradients = []
         for i in range(X.size(0)):
             x_sample = X[i:i+1]
             y_sample = Y[i:i+1]
-            sample_logits, sample_loss = model(x_sample, y_sample)         
+            with ctx:
+                sample_logits, sample_loss = model(x_sample, y_sample)         
             grads = torch.autograd.grad(outputs=sample_loss, inputs=model.parameters(), create_graph=False, retain_graph=False)
-            grads = torch.cat([grad.clone().detach().cpu().view(-1) for grad in grads if grad is not None])
-            gradients.append(grads)
-        gradients_tensor = torch.stack(gradients).cpu()
+            grads = [grad.clone().detach().cpu().view(-1) for grad in grads if grad is not None]
+            gradients.extend(grads)
+        gradients_tensor = torch.stack(gradients)
         variance = gradients_tensor.var(dim=0)
         norm_of_variance = torch.norm(variance)
+        del grads, gradients, gradients_tensor
         torch.cuda.empty_cache()
 #####
     # determine and set the learning rate for this iteration
