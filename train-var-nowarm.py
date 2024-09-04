@@ -29,6 +29,8 @@ from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
 
+import scipy.sparse.linalg as linalg
+
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
@@ -227,6 +229,35 @@ def estimate_loss():
     model.train()
     return out
 
+def calculate_pre_sharpness(X_batch, Y_batch, iter_num, vs, m_iter: int = 100, tol: float = 1e-9):
+    with ctx:
+        logits, loss = model(X_batch, Y_batch)
+    for param_group in optimizer.param_groups:
+        beta_1, beta_2 = param_group['betas']
+        epsilon = param_group['eps']
+    vt = []
+    for param in model.parameters():
+        param_state = optimizer.state[param] 
+        if 'exp_avg_sq' in param_state:
+            exp_avg_sq = param_state['exp_avg_sq']
+            vt.append(exp_avg_sq.flatten())
+    if vt:
+        vt = torch.cat(vt)
+    def compute_Pdiag(vt, beta1, beta2, epsilon, iter_num):
+        vhat = vt / (1 - beta2**(iter_num))
+        Pdiag = (torch.sqrt(vhat) + epsilon) * (1 - beta1**(iter_num + 1))
+        return Pdiag
+    Pdiag = compute_Pdiag(vt, beta1, beta2, epsilon, count)
+    def hvp(v):
+        v = v.detach()
+        grad_params = torch.autograd.grad(loss, model.parameters(), create_graph=True)
+        flat_grad_params = torch.cat([g.view(-1) for g in grad_params])
+        hvp = torch.autograd.grad(flat_grad_params @ v, model.parameters())
+        return torch.cat([g.view(-1) for g in hvp]) / Pdiag
+    vs = vs / torch.norm(vs, dim=-1, keepdim=True)
+    pre_eigs, pre_eigvs, pre_n_iter = linalg.lobpcg(lambda v: hvp(v).numpy(), vs.numpy(), maxiter=m_iter, tol=tol)
+    return pre_eigs, pre_eigvs, pre_n_iter
+
 # learning rate decay scheduler (cosine with warmup)
 def get_lr(it):
     # 1) linear warmup for warmup_iters steps
@@ -266,11 +297,9 @@ while True:
             norm_grads = torch.norm(grads)
             grads = grads / norm_grads         
             gradients.append(grads)
-            del grads
         gradients_tensor = torch.stack(gradients)
         variance = gradients_tensor.var(dim=0)
         norm_of_variance = torch.norm(variance)
-        del gradients, gradients_tensor
 #####
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
