@@ -262,7 +262,8 @@ while True:
             with ctx:
                 sample_logits, sample_loss = model(x_sample, y_sample)         
             grads = torch.autograd.grad(outputs=sample_loss, inputs=model.parameters(), create_graph=False, retain_graph=False)
-            grads = torch.cat([grad.clone().detach().cpu().view(-1) for grad in grads if grad is not None])            
+            grads = torch.cat([grad.clone().detach().cpu().view(-1) for grad in grads if grad is not None])  
+            grads = torch.norm(grads)          
             gradients.append(grads)
             del grads
         gradients_tensor = torch.stack(gradients)
