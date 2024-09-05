@@ -331,6 +331,7 @@ while True:
             Y_batch = torch.cat([Y_batch, Y], dim=0)
         # backward pass, with gradient scaling if training in fp16
         scaler.scale(loss).backward()
+        print('1')
     # clip the gradient
     if grad_clip != 0.0:
         scaler.unscale_(optimizer)
