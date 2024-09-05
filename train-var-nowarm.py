@@ -229,11 +229,8 @@ def estimate_loss():
     model.train()
     return out
 #####
-def calculate_pre_sharpness(X_batch, Y_batch, gradients, iter_num, vs, m_iter: int = 100, tol: float = 1e-9):
-    logits = model(X_batch)
-    loss = nn.CrossEntropyLoss()(logits, Y_batch)
+def calculate_pre_sharpness(gradients, iter_num, vs, m_iter: int = 100, tol: float = 1e-9):
     
-    # Получение параметров оптимизатора
     for param_group in optimizer.param_groups:
         beta1, beta2 = param_group['betas']
         epsilon = param_group['eps']
@@ -250,9 +247,11 @@ def calculate_pre_sharpness(X_batch, Y_batch, gradients, iter_num, vs, m_iter: i
     def compute_Pdiag(vt, beta1, beta2, epsilon, iter_num):
         vhat = vt / (1 - beta2**(iter_num))
         Pdiag = (torch.sqrt(vhat) + epsilon) * (1 - beta1**(iter_num))
+        Pdiag = 1
         return Pdiag
   
     Pdiag = compute_Pdiag(vt, beta1, beta2, epsilon, iter_num)
+    print(Pdiag)
     def hvp(v):
         v = torch.tensor(v, dtype=torch.float32).flatten()
         hvp = torch.autograd.grad(gradients @ v, model.parameters(), retain_graph=True)
@@ -290,12 +289,13 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
 #####
-    if iter_num % eval_interval == 0 and iter_num > 0:
+    if iter_num % eval_interval == 0 and iter_num > 0 and master_process:
+        X_batch, Y_batch = get_batch('val')
         gradients = []
         norm_gradients = []
         for i in range(X.size(0)):
-            x_sample = X[i:i+1]
-            y_sample = Y[i:i+1]
+            x_sample = X_batch[i:i+1]
+            y_sample = Y_batch[i:i+1]
             with ctx:
                 sample_logits, sample_loss = model(x_sample, y_sample)         
             grads = torch.autograd.grad(outputs=sample_loss, inputs=model.parameters())
@@ -316,6 +316,12 @@ while True:
         norm_gradients_by_mean = stack_gradients / (torch.norm(mean))
         variance_norm_grads_by_mean = norm_gradients_by_mean.var(dim=0)
         variance_norm_grads_by_mean = torch.norm(variance_norm_grads_by_mean)
+
+        logits, loss = model(X_batch, Y_batch)
+        gradients_for_hess = torch.autograd.grad(outputs=loss, inputs=model.parameters(), create_graph=True)
+        if iter_num == 1:
+            vs = np.random.rand(gradients_for_hess.numel(),1)
+        pre_eigs, vs = calculate_pre_sharpness(X_batch, Y_batch, gradients_for_hess, iter_num, vs)
         
 #####
     # determine and set the learning rate for this iteration
@@ -337,6 +343,7 @@ while True:
                 "variance": variance.item(),
                 "variance_norm_grads": variance_norm_grads.item(),
                 "variance_norm_grads_by_mean": variance_norm_grads_by_mean.item(),
+                "sharpness": pre_eigs,
             })
         if losses['val'] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses['val']
@@ -356,12 +363,6 @@ while True:
 
     # forward backward update, with optional gradient accumulation to simulate larger batch size
     # and using the GradScaler if data type is float16
-    if iter_num % eval_interval == 0 and iter_num > 0:
-        X_batch = X.clone()
-        Y_batch = Y.clone()
-    X_batch = X.clone()
-    Y_batch = Y.clone()
-    print('1')
     for micro_step in range(gradient_accumulation_steps):
         if ddp:
             # in DDP training we only need to sync gradients at the last micro step.
@@ -374,10 +375,6 @@ while True:
             loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
         X, Y = get_batch('train')
-        if iter_num % eval_interval == 0 and iter_num > 0 and micro_step < gradient_accumulation_steps-1:
-            X_batch = torch.cat([X_batch, X], dim=0)  
-            Y_batch = torch.cat([Y_batch, Y], dim=0)
-    print(X_batch.shape)
         # backward pass, with gradient scaling if training in fp16
         scaler.scale(loss).backward()
     # clip the gradient
