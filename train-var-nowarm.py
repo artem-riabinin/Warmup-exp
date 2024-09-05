@@ -229,12 +229,15 @@ def estimate_loss():
     model.train()
     return out
 #####
-def calculate_pre_sharpness(X_batch, Y_batch, iter_num, vs, m_iter: int = 100, tol: float = 1e-9):
-    with ctx:
-        logits, loss = model(X_batch, Y_batch)
+def calculate_pre_sharpness(X_batch, Y_batch, gradients, iter_num, vs, m_iter: int = 100, tol: float = 1e-9):
+    logits = model(X_batch)
+    loss = nn.CrossEntropyLoss()(logits, Y_batch)
+    
+    # Получение параметров оптимизатора
     for param_group in optimizer.param_groups:
-        beta_1, beta_2 = param_group['betas']
+        beta1, beta2 = param_group['betas']
         epsilon = param_group['eps']
+    
     vt = []
     for param in model.parameters():
         param_state = optimizer.state[param] 
@@ -243,20 +246,22 @@ def calculate_pre_sharpness(X_batch, Y_batch, iter_num, vs, m_iter: int = 100, t
             vt.append(exp_avg_sq.flatten())
     if vt:
         vt = torch.cat(vt)
+    
     def compute_Pdiag(vt, beta1, beta2, epsilon, iter_num):
         vhat = vt / (1 - beta2**(iter_num))
-        Pdiag = (torch.sqrt(vhat) + epsilon) * (1 - beta1**(iter_num + 1))
+        Pdiag = (torch.sqrt(vhat) + epsilon) * (1 - beta1**(iter_num))
         return Pdiag
+  
     Pdiag = compute_Pdiag(vt, beta1, beta2, epsilon, iter_num)
     def hvp(v):
-        v = v.detach()
-        grad_params = torch.autograd.grad(loss, model.parameters(), create_graph=True)
-        flat_grad_params = torch.cat([g.view(-1) for g in grad_params])
-        hvp = torch.autograd.grad(flat_grad_params @ v, model.parameters())
-        return torch.cat([g.view(-1) for g in hvp]) / Pdiag
-    vs = vs / torch.norm(vs, dim=-1, keepdim=True)
-    pre_eigs, pre_eigvs, pre_n_iter = linalg.lobpcg(lambda v: hvp(v).numpy(), vs.numpy(), maxiter=m_iter, tol=tol)
-    return pre_eigs, torch.from_numpy(pre_eigvs), pre_n_iter
+        v = torch.tensor(v, dtype=torch.float32).flatten()
+        hvp = torch.autograd.grad(gradients @ v, model.parameters(), retain_graph=True)
+        res = ((torch.cat([g.view(-1) for g in hvp])) / Pdiag).numpy().reshape(v.numel(),1)
+        return res
+    
+    vs = vs / np.linalg.norm(vs, axis=0, keepdims=True)
+    pre_eigs, pre_eigvs = linalg.lobpcg(hvp, vs, maxiter=m_iter, tol=tol)
+    return pre_eigs, pre_eigvs
 #####
 # learning rate decay scheduler (cosine with warmup)
 def get_lr(it):
@@ -285,21 +290,33 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
 #####
-    if iter_num % eval_interval == 0:
+    if iter_num % eval_interval == 0 and iter_num > 0:
         gradients = []
+        norm_gradients = []
         for i in range(X.size(0)):
             x_sample = X[i:i+1]
             y_sample = Y[i:i+1]
             with ctx:
                 sample_logits, sample_loss = model(x_sample, y_sample)         
-            grads = torch.autograd.grad(outputs=sample_loss, inputs=model.parameters(), create_graph=False, retain_graph=False)
-            grads = torch.cat([grad.clone().detach().cpu().view(-1) for grad in grads if grad is not None])  
-            norm_grads = torch.norm(grads)
-            grads = grads / norm_grads         
+            grads = torch.autograd.grad(outputs=sample_loss, inputs=model.parameters())
+            grads = torch.cat([grad.view(-1) for grad in grads if grad is not None])
+            ngrads = grads / torch.norm(grads)
             gradients.append(grads)
-        gradients_tensor = torch.stack(gradients)
-        variance = gradients_tensor.var(dim=0)
-        norm_of_variance = torch.norm(variance)
+            norm_gradients.append(ngrads)
+
+        stack_gradients = torch.stack(gradients)
+        variance = stack_gradients.var(dim=0)
+        variance = torch.norm(variance)
+
+        stack_norm_gradients = torch.stack(norm_gradients)
+        variance_norm_grads = stack_norm_gradients.var(dim=0)
+        variance_norm_grads = torch.norm(variance_norm_grads)
+
+        mean = gradients_tensor.mean(dim=0)
+        norm_gradients_by_mean = stack_gradients / (torch.norm(mean))
+        variance_norm_grads_by_mean = norm_gradients_by_mean.var(dim=0)
+        variance_norm_grads_by_mean = torch.norm(variance_norm_grads_by_mean)
+        
 #####
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
@@ -307,7 +324,7 @@ while True:
         param_group['lr'] = lr
 
     # evaluate the loss on train/val sets and write checkpoints
-    if iter_num % eval_interval == 0 and master_process:
+    if iter_num % eval_interval == 0 and iter_num > 0 and master_process:
         losses = estimate_loss()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
@@ -317,7 +334,9 @@ while True:
                 "val/loss": losses['val'],
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage
-                "variance": norm_of_variance.item(),
+                "variance": variance.item(),
+                "variance_norm_grads": variance_norm_grads.item(),
+                "variance_norm_grads_by_mean": variance_norm_grads_by_mean.item(),
             })
         if losses['val'] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses['val']
