@@ -228,7 +228,7 @@ def estimate_loss():
         out[split] = losses.mean()
     model.train()
     return out
-
+#####
 def calculate_pre_sharpness(X_batch, Y_batch, iter_num, vs, m_iter: int = 100, tol: float = 1e-9):
     with ctx:
         logits, loss = model(X_batch, Y_batch)
@@ -247,7 +247,7 @@ def calculate_pre_sharpness(X_batch, Y_batch, iter_num, vs, m_iter: int = 100, t
         vhat = vt / (1 - beta2**(iter_num))
         Pdiag = (torch.sqrt(vhat) + epsilon) * (1 - beta1**(iter_num + 1))
         return Pdiag
-    Pdiag = compute_Pdiag(vt, beta1, beta2, epsilon, count)
+    Pdiag = compute_Pdiag(vt, beta1, beta2, epsilon, iter_num)
     def hvp(v):
         v = v.detach()
         grad_params = torch.autograd.grad(loss, model.parameters(), create_graph=True)
@@ -256,8 +256,8 @@ def calculate_pre_sharpness(X_batch, Y_batch, iter_num, vs, m_iter: int = 100, t
         return torch.cat([g.view(-1) for g in hvp]) / Pdiag
     vs = vs / torch.norm(vs, dim=-1, keepdim=True)
     pre_eigs, pre_eigvs, pre_n_iter = linalg.lobpcg(lambda v: hvp(v).numpy(), vs.numpy(), maxiter=m_iter, tol=tol)
-    return pre_eigs, pre_eigvs, pre_n_iter
-
+    return pre_eigs, torch.from_numpy(pre_eigvs), pre_n_iter
+#####
 # learning rate decay scheduler (cosine with warmup)
 def get_lr(it):
     # 1) linear warmup for warmup_iters steps
