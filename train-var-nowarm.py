@@ -35,7 +35,7 @@ import scipy.sparse.linalg as linalg
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
 out_dir = 'out'
-eval_interval = 500
+eval_interval = 5
 log_interval = 1
 eval_iters = 200
 eval_only = False # if True, script exits right after the first eval
@@ -357,8 +357,10 @@ while True:
     # forward backward update, with optional gradient accumulation to simulate larger batch size
     # and using the GradScaler if data type is float16
     if iter_num % eval_interval == 0 and iter_num > 0:
-        X_batch = X
-        Y_batch = Y
+        X_batch = X.clone()
+        Y_batch = Y.clone()
+    X_batch = X.clone()
+    Y_batch = Y.clone()
     for micro_step in range(gradient_accumulation_steps):
         if ddp:
             # in DDP training we only need to sync gradients at the last micro step.
@@ -374,8 +376,7 @@ while True:
         if iter_num % eval_interval == 0 and iter_num > 0 and micro_step < gradient_accumulation_steps-1:
             X_batch = torch.cat([X_batch, X], dim=0)  
             Y_batch = torch.cat([Y_batch, Y], dim=0)
-        print(X.shape)
-        print(X_batch.shape)
+    print(X_batch.shape)
         # backward pass, with gradient scaling if training in fp16
         scaler.scale(loss).backward()
     # clip the gradient
