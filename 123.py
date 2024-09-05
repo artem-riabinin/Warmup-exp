@@ -313,6 +313,7 @@ while True:
         Y_batch = Y.clone()
     X_batch = X.clone()
     Y_batch = Y.clone()
+    print(X_batch.shape)
     for micro_step in range(gradient_accumulation_steps):
         if ddp:
             # in DDP training we only need to sync gradients at the last micro step.
@@ -328,7 +329,6 @@ while True:
         if iter_num % eval_interval == 0 and iter_num > 0 and micro_step < gradient_accumulation_steps-1:
             X_batch = torch.cat([X_batch, X], dim=0)  
             Y_batch = torch.cat([Y_batch, Y], dim=0)
-    print(X_batch.shape)
         # backward pass, with gradient scaling if training in fp16
         scaler.scale(loss).backward()
     # clip the gradient
