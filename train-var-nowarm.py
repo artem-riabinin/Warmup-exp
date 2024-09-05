@@ -361,6 +361,7 @@ while True:
         Y_batch = Y.clone()
     X_batch = X.clone()
     Y_batch = Y.clone()
+    print('1')
     for micro_step in range(gradient_accumulation_steps):
         if ddp:
             # in DDP training we only need to sync gradients at the last micro step.
