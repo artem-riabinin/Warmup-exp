@@ -292,6 +292,7 @@ running_mfu = -1.0
 while True:
 #####
     if iter_num % eval_interval == 0 and iter_num > 0:
+        """
         X_batch, Y_batch = get_batch('val')
         gradients = []
         norm_gradients = []
@@ -321,7 +322,7 @@ while True:
         variance_norm_grads_by_mean = torch.norm(variance_norm_grads_by_mean)
 
         del gradients, norm_gradients, stack_gradients, stack_norm_gradients, norm_gradients_by_mean
-
+        """
         logits, loss = model(X_batch, Y_batch)
         gradients_for_hess = torch.autograd.grad(outputs=loss, inputs=model.parameters(), create_graph=True)[0]
         gradients_for_hess = torch.cat([grad.view(-1) for grad in gradients_for_hess if grad is not None])
