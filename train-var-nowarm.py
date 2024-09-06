@@ -303,6 +303,7 @@ while True:
             ngrads = grads / torch.norm(grads)
             gradients.append(grads)
             norm_gradients.append(ngrads)
+            del grads
 
         stack_gradients = torch.stack(gradients)
         variance = stack_gradients.var(dim=0)
@@ -317,12 +318,12 @@ while True:
         variance_norm_grads_by_mean = norm_gradients_by_mean.var(dim=0)
         variance_norm_grads_by_mean = torch.norm(variance_norm_grads_by_mean)
 
-        del gradients, norm_gradients
+        del gradients, norm_gradients, stack_gradients, stack_norm_gradients, norm_gradients_by_mean
 
         print('1')
         logits, loss = model(X_batch, Y_batch)
         print('2')
-        gradients_for_hess = torch.autograd.grad(outputs=loss, inputs=model.parameters(), create_graph=True)
+        gradients_for_hess = torch.autograd.grad(outputs=loss, inputs=model.parameters(), create_graph=True)[0]
         if iter_num == eval_interval:
             vs = np.random.rand(gradients_for_hess.numel(),1)
         pre_eigs, vs = calculate_pre_sharpness(gradients_for_hess, iter_num, vs)
