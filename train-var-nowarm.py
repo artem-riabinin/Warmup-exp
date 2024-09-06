@@ -272,6 +272,8 @@ def calculate_pre_sharpness(model, gradients, iter_num, vs, m_iter: int = 100, t
     def hvp(v):
         v = torch.tensor(v, dtype=torch.float32, device=device).flatten()
         hvp = torch.autograd.grad(gradients @ v, model.parameters(), retain_graph=True)
+        print(v.shape)
+        print(hvp.shape)
         res = ((torch.cat([g.view(-1) for g in hvp])) / Pdiag).cpu().numpy().reshape(v.numel(), 1) 
         return res
     
