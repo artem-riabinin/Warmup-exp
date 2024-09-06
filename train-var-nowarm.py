@@ -317,7 +317,11 @@ while True:
         variance_norm_grads_by_mean = norm_gradients_by_mean.var(dim=0)
         variance_norm_grads_by_mean = torch.norm(variance_norm_grads_by_mean)
 
+        del gradients, norm_gradients
+
+        print('1')
         logits, loss = model(X_batch, Y_batch)
+        print('2')
         gradients_for_hess = torch.autograd.grad(outputs=loss, inputs=model.parameters(), create_graph=True)
         if iter_num == 1:
             vs = np.random.rand(gradients_for_hess.numel(),1)
