@@ -271,8 +271,6 @@ def calculate_pre_sharpness(model, gradients, iter_num, vs, m_iter: int = 100, t
     
     def hvp(v):
         v = torch.tensor(v, dtype=torch.float32, device=device).flatten()
-        print(v.shape)
-        print(gradients.shape)
         hvp = torch.autograd.grad(gradients @ v, model.parameters(), retain_graph=True)
         res = ((torch.cat([g.view(-1) for g in hvp])) / Pdiag).cpu().numpy().reshape(v.numel(), 1) 
         return res
@@ -308,7 +306,7 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
 #####
-    if iter_num % eval_interval == 0 and iter_num > 0 and master_process:
+    if ((iter_num % eval_interval == 0 and iter_num > 0) or (iter_num == 1)) and master_process:
 
         X_batch, Y_batch = get_batch('val')
         gradients = []
@@ -323,7 +321,7 @@ while True:
             ngrads = grads / torch.norm(grads)
             gradients.append(grads)
             norm_gradients.append(ngrads)
-            del grads
+            del grads, ngrads
 
         stack_gradients = torch.stack(gradients)
         variance = stack_gradients.var(dim=0)
@@ -346,15 +344,7 @@ while True:
         gradients_for_hess = torch.cat([grad.view(-1) for grad in gradients_for_hess if grad is not None])
         if iter_num == eval_interval:
             vs = np.random.rand(gradients_for_hess.numel(),1)
-            print(vs.shape)
-            
-        device = gradients_for_hess.device
-        vv = torch.randn(gradients_for_hess.numel(), device=device)
-        product = torch.dot(gradients_for_hess, vv)
-        hh = torch.autograd.grad(product, model.parameters())
-        print('happy')
-        
-        #pre_eigs, vs = calculate_pre_sharpness(model, gradients_for_hess, iter_num, vs)
+        pre_eigs, vs = calculate_pre_sharpness(model, gradients_for_hess, iter_num, vs)
 #####
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
