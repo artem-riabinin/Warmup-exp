@@ -345,9 +345,8 @@ while True:
         gradients_for_hess = torch.autograd.grad(loss, model.parameters(), create_graph=True)
         gradients_for_hess = torch.cat([grad.view(-1) for grad in gradients_for_hess if grad is not None])
         print('grads_shape: ', gradients_for_hess.shape)
-        if iter_num == 1:
-            vs = np.random.rand(gradients_for_hess.numel(),1)
-        pre_eigs, vs = calculate_pre_sharpness(model, gradients_for_hess, iter_num, vs)
+        vs = np.random.rand(gradients_for_hess.numel(),1)
+        pre_eigs, _ = calculate_pre_sharpness(model, gradients_for_hess, iter_num, vs)
 
         del gradients_for_hess
 #####
