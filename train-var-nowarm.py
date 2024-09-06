@@ -328,7 +328,8 @@ while True:
         if iter_num == eval_interval:
             vs = np.random.rand(gradients_for_hess.numel(),1)
             print(vs.shape)
-        hh = torch.autograd.grad(gradients_for_hess @ vs, model.parameters())
+        vv = torch.randn(gradients_for_hess.numel())
+        hh = torch.autograd.grad(gradients_for_hess @ vv, model.parameters())
         print('happy')
         #pre_eigs, vs = calculate_pre_sharpness(model, gradients_for_hess, iter_num, vs)
         
