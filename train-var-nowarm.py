@@ -48,7 +48,7 @@ wandb_run_name = 'gpt2' # 'run' + str(time.time())
 # data
 dataset = 'openwebtext'
 gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
-batch_size = 4 # if gradient_accumulation_steps > 1, this is the micro-batch size
+batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 1024
 # model
 n_layer = 12
@@ -123,6 +123,23 @@ def get_batch(split):
     else:
         data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
     ix = torch.randint(len(data) - block_size, (batch_size,))
+    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
+    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
+    if device_type == 'cuda':
+        # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
+        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+    else:
+        x, y = x.to(device), y.to(device)
+    return x, y
+
+def get_batch_small(split):
+    # We recreate np.memmap every batch to avoid a memory leak, as per
+    # https://stackoverflow.com/questions/45132940/numpy-memmap-memory-usage-want-to-iterate-once/61472122#61472122
+    if split == 'train':
+        data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
+    else:
+        data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
+    ix = torch.randint(len(data) - block_size, (4,))
     x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
     y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
     if device_type == 'cuda':
@@ -291,14 +308,14 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
 #####
-    if iter_num % eval_interval == 0 and iter_num > 0:
-        """
+    if iter_num % eval_interval == 0 and iter_num > 0 and master_process:
+
         X_batch, Y_batch = get_batch('val')
         gradients = []
         norm_gradients = []
         for i in range(X.size(0)):
-            x_sample = X_batch[i:i+1]
-            y_sample = Y_batch[i:i+1]
+            x_sample = X[i:i+1]
+            y_sample = Y[i:i+1]
             with ctx:
                 sample_logits, sample_loss = model(x_sample, y_sample)         
             grads = torch.autograd.grad(outputs=sample_loss, inputs=model.parameters())
@@ -322,8 +339,8 @@ while True:
         variance_norm_grads_by_mean = torch.norm(variance_norm_grads_by_mean)
 
         del gradients, norm_gradients, stack_gradients, stack_norm_gradients, norm_gradients_by_mean
-        """
-        X_batch, Y_batch = get_batch('val')
+
+        X_batch, Y_batch = get_batch_small('val')
         logits, loss = model(X_batch, Y_batch)
         gradients_for_hess = torch.autograd.grad(outputs=loss, inputs=model.parameters(), create_graph=True)[0]
         gradients_for_hess = torch.cat([grad.view(-1) for grad in gradients_for_hess if grad is not None])
