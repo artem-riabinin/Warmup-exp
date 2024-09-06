@@ -291,7 +291,7 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
 #####
-    if iter_num % eval_interval == 0 and iter_num > 0 and master_process:
+    if iter_num % eval_interval == 0 and iter_num > 0:
         X_batch, Y_batch = get_batch('val')
         gradients = []
         norm_gradients = []
@@ -323,7 +323,7 @@ while True:
         del gradients, norm_gradients, stack_gradients, stack_norm_gradients, norm_gradients_by_mean
 
         logits, loss = model(X_batch, Y_batch)
-        gradients_for_hess = torch.autograd.grad(outputs=loss, inputs=model.parameters(), create_graph=True, retain_graph=True)[0]
+        gradients_for_hess = torch.autograd.grad(outputs=loss, inputs=model.parameters(), create_graph=True)[0]
         gradients_for_hess = torch.cat([grad.view(-1) for grad in gradients_for_hess if grad is not None])
         if iter_num == eval_interval:
             vs = np.random.rand(gradients_for_hess.numel(),1)
