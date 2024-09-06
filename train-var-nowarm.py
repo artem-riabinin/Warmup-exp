@@ -323,6 +323,7 @@ while True:
 
         del gradients, norm_gradients, stack_gradients, stack_norm_gradients, norm_gradients_by_mean
         """
+        X_batch, Y_batch = get_batch('val')
         logits, loss = model(X_batch, Y_batch)
         gradients_for_hess = torch.autograd.grad(outputs=loss, inputs=model.parameters(), create_graph=True)[0]
         gradients_for_hess = torch.cat([grad.view(-1) for grad in gradients_for_hess if grad is not None])
