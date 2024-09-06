@@ -323,15 +323,18 @@ while True:
         del gradients, norm_gradients, stack_gradients, stack_norm_gradients, norm_gradients_by_mean
 
         logits, loss = model(X_batch, Y_batch)
-        gradients_for_hess = torch.autograd.grad(outputs=loss, inputs=model.parameters(), create_graph=True)[0]
+        gradients_for_hess = torch.autograd.grad(outputs=loss, inputs=model.parameters(), create_graph=True, retain_graph=True)[0]
         gradients_for_hess = torch.cat([grad.view(-1) for grad in gradients_for_hess if grad is not None])
         if iter_num == eval_interval:
             vs = np.random.rand(gradients_for_hess.numel(),1)
             print(vs.shape)
+            
         device = gradients_for_hess.device
         vv = torch.randn(gradients_for_hess.numel(), device=device)
-        hh = torch.autograd.grad(gradients_for_hess @ vv, model.parameters())
+        product = torch.dot(gradients_for_hess, vv)
+        hh = torch.autograd.grad(product, model.parameters())
         print('happy')
+        
         #pre_eigs, vs = calculate_pre_sharpness(model, gradients_for_hess, iter_num, vs)
 #####
     # determine and set the learning rate for this iteration
