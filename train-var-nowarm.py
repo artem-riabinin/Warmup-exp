@@ -229,7 +229,8 @@ def estimate_loss():
     model.train()
     return out
 #####
-def calculate_pre_sharpness(gradients, iter_num, vs, m_iter: int = 100, tol: float = 1e-9):
+def calculate_pre_sharpness(model, gradients, iter_num, vs, m_iter: int = 100, tol: float = 1e-9):
+    device = next(model.parameters()).device
     
     for param_group in optimizer.param_groups:
         beta1, beta2 = param_group['betas']
@@ -249,13 +250,12 @@ def calculate_pre_sharpness(gradients, iter_num, vs, m_iter: int = 100, tol: flo
         Pdiag = (torch.sqrt(vhat) + epsilon) * (1 - beta1**(iter_num))
         Pdiag = 1
         return Pdiag
-  
     Pdiag = compute_Pdiag(vt, beta1, beta2, epsilon, iter_num)
-    print(Pdiag)
+    
     def hvp(v):
-        v = torch.tensor(v, dtype=torch.float32).flatten()
+        v = torch.tensor(v, dtype=torch.float32, device=device).flatten() 
         hvp = torch.autograd.grad(gradients @ v, model.parameters(), retain_graph=True)
-        res = ((torch.cat([g.view(-1) for g in hvp])) / Pdiag).numpy().reshape(v.numel(),1)
+        res = ((torch.cat([g.view(-1) for g in hvp])) / Pdiag).cpu().numpy().reshape(v.numel(), 1) 
         return res
     
     vs = vs / np.linalg.norm(vs, axis=0, keepdims=True)
@@ -320,13 +320,11 @@ while True:
 
         del gradients, norm_gradients, stack_gradients, stack_norm_gradients, norm_gradients_by_mean
 
-        print('1')
         logits, loss = model(X_batch, Y_batch)
-        print('2')
         gradients_for_hess = torch.autograd.grad(outputs=loss, inputs=model.parameters(), create_graph=True)[0]
         if iter_num == eval_interval:
             vs = np.random.rand(gradients_for_hess.numel(),1)
-        pre_eigs, vs = calculate_pre_sharpness(gradients_for_hess, iter_num, vs)
+        pre_eigs, vs = calculate_pre_sharpness(model, gradients_for_hess, iter_num, vs)
         
 #####
     # determine and set the learning rate for this iteration
