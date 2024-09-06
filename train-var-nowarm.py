@@ -246,7 +246,7 @@ def estimate_loss():
     model.train()
     return out
 #####
-def calculate_pre_sharpness(model, gradients, iter_num, vs, m_iter: int = 100, tol: float = 1e-9):
+def calculate_pre_sharpness(model, gradients, iter_num, vs, m_iter: int = 30, tol: float = 1e-5):
     device = next(model.parameters()).device
     
     for param_group in optimizer.param_groups:
@@ -272,8 +272,7 @@ def calculate_pre_sharpness(model, gradients, iter_num, vs, m_iter: int = 100, t
     def hvp(v):
         v = torch.tensor(v, dtype=torch.float32, device=device).flatten()
         hvp = torch.autograd.grad(gradients @ v, model.parameters(), retain_graph=True)[0]
-        print(v.shape)
-        print(hvp.shape)
+        print('hvp')
         res = ((torch.cat([g.view(-1) for g in hvp])) / Pdiag).cpu().numpy().reshape(v.numel(), 1) 
         return res
     
@@ -318,7 +317,7 @@ while True:
             y_sample = Y[i:i+1]
             with ctx:
                 sample_logits, sample_loss = model(x_sample, y_sample)         
-            grads = torch.autograd.grad(outputs=sample_loss, inputs=model.parameters())
+            grads = torch.autograd.grad(sample_loss, model.parameters())
             grads = torch.cat([grad.view(-1) for grad in grads if grad is not None])
             ngrads = grads / torch.norm(grads)
             gradients.append(grads)
@@ -342,12 +341,15 @@ while True:
 
         X_batch, Y_batch = get_batch_small('val')
         logits, loss = model(X_batch, Y_batch)
-        gradients_for_hess = torch.autograd.grad(outputs=loss, inputs=model.parameters(), create_graph=True)[0]
+        total_params = sum(p.numel() for p in model.parameters())
+        print(f"Total parameters: {total_params}")
+        gradients_for_hess = torch.autograd.grad(loss, model.parameters(), create_graph=True)[0]
         gradients_for_hess = torch.cat([grad.view(-1) for grad in gradients_for_hess if grad is not None])
-        print(gradients_for_hess.shape)
         if iter_num == 1:
             vs = np.random.rand(gradients_for_hess.numel(),1)
         pre_eigs, vs = calculate_pre_sharpness(model, gradients_for_hess, iter_num, vs)
+
+        del gradients_for_hess
 #####
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
@@ -368,7 +370,7 @@ while True:
                 "variance": variance.item(),
                 "variance_norm_grads": variance_norm_grads.item(),
                 "variance_norm_grads_by_mean": variance_norm_grads_by_mean.item(),
-                "sharpness": pre_eigs,
+                "sharpness": pre_eigs.item(),
             })
         if losses['val'] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses['val']
