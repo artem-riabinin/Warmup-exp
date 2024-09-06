@@ -253,7 +253,9 @@ def calculate_pre_sharpness(model, gradients, iter_num, vs, m_iter: int = 100, t
     Pdiag = compute_Pdiag(vt, beta1, beta2, epsilon, iter_num)
     
     def hvp(v):
-        v = torch.tensor(v, dtype=torch.float32, device=device).flatten() 
+        v = torch.tensor(v, dtype=torch.float32, device=device).flatten()
+        print(v.shape)
+        print(gradients.shape)
         hvp = torch.autograd.grad(gradients @ v, model.parameters(), retain_graph=True)
         res = ((torch.cat([g.view(-1) for g in hvp])) / Pdiag).cpu().numpy().reshape(v.numel(), 1) 
         return res
@@ -325,6 +327,7 @@ while True:
         gradients_for_hess = torch.cat([grad.view(-1) for grad in gradients_for_hess if grad is not None])
         if iter_num == eval_interval:
             vs = np.random.rand(gradients_for_hess.numel(),1)
+            print(vs.shape)
         pre_eigs, vs = calculate_pre_sharpness(model, gradients_for_hess, iter_num, vs)
         
 #####
