@@ -312,7 +312,7 @@ while True:
         variance_norm_grads = stack_norm_gradients.var(dim=0)
         variance_norm_grads = torch.norm(variance_norm_grads)
 
-        mean = gradients_tensor.mean(dim=0)
+        mean = stack_gradients.mean(dim=0)
         norm_gradients_by_mean = stack_gradients / (torch.norm(mean))
         variance_norm_grads_by_mean = norm_gradients_by_mean.var(dim=0)
         variance_norm_grads_by_mean = torch.norm(variance_norm_grads_by_mean)
