@@ -322,6 +322,7 @@ while True:
 
         logits, loss = model(X_batch, Y_batch)
         gradients_for_hess = torch.autograd.grad(outputs=loss, inputs=model.parameters(), create_graph=True)[0]
+        gradients_for_hess = torch.cat([grad.view(-1) for grad in gradients_for_hess if grad is not None])
         if iter_num == eval_interval:
             vs = np.random.rand(gradients_for_hess.numel(),1)
         pre_eigs, vs = calculate_pre_sharpness(model, gradients_for_hess, iter_num, vs)
