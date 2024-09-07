@@ -68,7 +68,7 @@ class CausalSelfAttention(nn.Module):
                     y = torch.nn.functional.scaled_dot_product_attention(
                         q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True
                     )
-            elif:
+            else:
                 y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
         else:
             # manual implementation of attention
