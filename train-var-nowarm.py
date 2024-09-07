@@ -321,7 +321,7 @@ while True:
             #ngrads = grads / torch.norm(grads)
             gradients.append(grads)
             #norm_gradients.append(ngrads)
-            del grads, ngrads
+            del grads
 
         gradients = torch.stack(gradients)
         variance = gradients.var(dim=0)
