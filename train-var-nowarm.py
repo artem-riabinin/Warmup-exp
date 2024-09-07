@@ -47,8 +47,8 @@ wandb_project = 'owt'
 wandb_run_name = 'gpt2' # 'run' + str(time.time())
 # data
 dataset = 'openwebtext'
-gradient_accumulation_steps = 5 * 4 # used to simulate larger batch sizes
-batch_size = 24 # if gradient_accumulation_steps > 1, this is the micro-batch size
+gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
+batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 1024
 # model
 n_layer = 12
@@ -318,10 +318,10 @@ while True:
                 sample_logits, sample_loss = model(x_sample, y_sample)         
             grads = torch.autograd.grad(sample_loss, model.parameters())
             grads = torch.cat([grad.view(-1) for grad in grads if grad is not None])
-            #ngrads = grads / torch.norm(grads)
+            ngrads = grads / torch.norm(grads)
             gradients.append(grads)
-            #norm_gradients.append(ngrads)
-            del grads
+            norm_gradients.append(ngrads)
+            del grads, ngrads
 
         gradients = torch.stack(gradients)
         variance = gradients.var(dim=0)
@@ -338,7 +338,7 @@ while True:
         variance_norm_grads = norm_gradients.var(dim=0)
         variance_norm_grads = torch.norm(variance_norm_grads)
 
-        del norm_gradient
+        del norm_gradients
 
         X_batch, Y_batch = get_batch_small('val')
         logits, loss = model(X_batch, Y_batch, use_alternate_attention=True)
