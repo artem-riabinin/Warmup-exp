@@ -267,6 +267,7 @@ def calculate_pre_sharpness(model, gradients, iter_num, vs, m_iter: int = 20, to
         Pdiag = (torch.sqrt(vhat) + epsilon) * (1 - beta1**(iter_num))
         return Pdiag
     Pdiag = compute_Pdiag(vt, beta1, beta2, epsilon, iter_num)
+    Pdiag = 1
     
     def hvp(v):
         v = torch.tensor(v, dtype=torch.float32, device=device).flatten()
