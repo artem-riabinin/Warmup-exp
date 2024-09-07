@@ -246,7 +246,7 @@ def estimate_loss():
     model.train()
     return out
 #####
-def calculate_pre_sharpness(model, gradients, iter_num, vs, m_iter: int = 20, tol: float = 1e-4):
+def calculate_pre_sharpness(model, gradients, iter_num, vs, m_iter: int = 30, tol: float = 1e-4):
     device = next(model.parameters()).device
     
     for param_group in optimizer.param_groups:
