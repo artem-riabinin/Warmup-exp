@@ -323,20 +323,22 @@ while True:
             norm_gradients.append(ngrads)
             del grads, ngrads
 
-        stack_gradients = torch.stack(gradients)
-        variance = stack_gradients.var(dim=0)
+        gradients = torch.stack(gradients)
+        variance = gradients.var(dim=0)
         variance = torch.norm(variance)
 
-        stack_norm_gradients = torch.stack(norm_gradients)
-        variance_norm_grads = stack_norm_gradients.var(dim=0)
-        variance_norm_grads = torch.norm(variance_norm_grads)
-
-        mean = stack_gradients.mean(dim=0)
-        norm_gradients_by_mean = stack_gradients / (torch.norm(mean))
-        variance_norm_grads_by_mean = norm_gradients_by_mean.var(dim=0)
+        mean = gradients.mean(dim=0)
+        gradients = gradients / (torch.norm(mean))
+        variance_norm_grads_by_mean = gradients.var(dim=0)
         variance_norm_grads_by_mean = torch.norm(variance_norm_grads_by_mean)
 
-        del gradients, norm_gradients, stack_gradients, stack_norm_gradients, norm_gradients_by_mean
+        del gradients
+
+        norm_gradients = torch.stack(norm_gradients)
+        variance_norm_grads = norm_gradients.var(dim=0)
+        variance_norm_grads = torch.norm(variance_norm_grads)
+
+        del norm_gradient
 
         X_batch, Y_batch = get_batch_small('val')
         logits, loss = model(X_batch, Y_batch, use_alternate_attention=True)
