@@ -29,11 +29,13 @@ from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
 
+import scipy.sparse.linalg as linalg
+
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
 out_dir = 'out'
-eval_interval = 500
+eval_interval = 200
 log_interval = 1
 eval_iters = 200
 eval_only = False # if True, script exits right after the first eval
@@ -45,8 +47,8 @@ wandb_project = 'owt'
 wandb_run_name = 'gpt2' # 'run' + str(time.time())
 # data
 dataset = 'openwebtext'
-gradient_accumulation_steps = 5 * 4 # used to simulate larger batch sizes
-batch_size = 24 # if gradient_accumulation_steps > 1, this is the micro-batch size
+gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
+batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 1024
 # model
 n_layer = 12
@@ -71,7 +73,7 @@ backend = 'nccl' # 'nccl', 'gloo', etc.
 # system
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
-compile = True # use PyTorch 2.0 to compile the model to be faster
+compile = False # use PyTorch 2.0 to compile the model to be faster
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 exec(open('configurator.py').read()) # overrides from command line or config file
@@ -121,6 +123,23 @@ def get_batch(split):
     else:
         data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
     ix = torch.randint(len(data) - block_size, (batch_size,))
+    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
+    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
+    if device_type == 'cuda':
+        # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
+        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+    else:
+        x, y = x.to(device), y.to(device)
+    return x, y
+
+def get_batch_small(split):
+    # We recreate np.memmap every batch to avoid a memory leak, as per
+    # https://stackoverflow.com/questions/45132940/numpy-memmap-memory-usage-want-to-iterate-once/61472122#61472122
+    if split == 'train':
+        data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
+    else:
+        data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
+    ix = torch.randint(len(data) - block_size, (4,))
     x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
     y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
     if device_type == 'cuda':
@@ -226,7 +245,40 @@ def estimate_loss():
         out[split] = losses.mean()
     model.train()
     return out
-
+#####
+def calculate_pre_sharpness(model, gradients, iter_num, vs, m_iter: int = 30, tol: float = 1e-4):
+    device = next(model.parameters()).device
+    
+    for param_group in optimizer.param_groups:
+        beta1, beta2 = param_group['betas']
+        epsilon = param_group['eps']
+    
+    vt = []
+    for param in model.parameters():
+        param_state = optimizer.state[param] 
+        if 'exp_avg_sq' in param_state:
+            exp_avg_sq = param_state['exp_avg_sq']
+            vt.append(exp_avg_sq.flatten())
+    if vt:
+        vt = torch.cat(vt)
+    
+    def compute_Pdiag(vt, beta1, beta2, epsilon, iter_num):
+        vhat = vt / (1 - beta2**(iter_num))
+        Pdiag = (torch.sqrt(vhat) + epsilon) * (1 - beta1**(iter_num))
+        return Pdiag
+    Pdiag = compute_Pdiag(vt, beta1, beta2, epsilon, iter_num)
+    Pdiag = 1
+    
+    def hvp(v):
+        v = torch.tensor(v, dtype=torch.float32, device=device).flatten()
+        hvp = torch.autograd.grad(gradients @ v, model.parameters(), retain_graph=True)
+        res = (torch.cat([grad.view(-1) for grad in hvp if grad is not None]) / Pdiag).cpu().numpy().reshape(v.numel(), 1)
+        return res
+    
+    vs = vs / np.linalg.norm(vs, axis=0, keepdims=True)
+    pre_eigs, pre_eigvs = linalg.lobpcg(hvp, vs, maxiter=m_iter, tol=tol)
+    return pre_eigs, pre_eigvs
+#####
 # learning rate decay scheduler (cosine with warmup)
 def get_lr(it):
     # 1) linear warmup for warmup_iters steps
@@ -254,23 +306,50 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
 #####
-    if iter_num % eval_interval == 0:
+    if ((iter_num % eval_interval == 0 and iter_num > 0) or (iter_num == 1)) and master_process:
+
+        X_batch, Y_batch = get_batch('val')
         gradients = []
+        norm_gradients = []
         for i in range(X.size(0)):
             x_sample = X[i:i+1]
             y_sample = Y[i:i+1]
             with ctx:
                 sample_logits, sample_loss = model(x_sample, y_sample)         
-            grads = torch.autograd.grad(outputs=sample_loss, inputs=model.parameters(), create_graph=False, retain_graph=False)
-            grads = torch.cat([grad.clone().detach().cpu().view(-1) for grad in grads if grad is not None])
-            norm_grads = torch.norm(grads)
-            grads = grads / norm_grads    
+            grads = torch.autograd.grad(sample_loss, model.parameters())
+            grads = torch.cat([grad.view(-1) for grad in grads if grad is not None])
+            ngrads = grads / torch.norm(grads)
             gradients.append(grads)
-            del grads
-        gradients_tensor = torch.stack(gradients)
-        variance = gradients_tensor.var(dim=0)
-        norm_of_variance = torch.norm(variance)
-        del gradients, gradients_tensor
+            norm_gradients.append(ngrads)
+            del grads, ngrads
+
+        gradients = torch.stack(gradients)
+        variance = gradients.var(dim=0)
+        variance = torch.norm(variance)
+
+        mean = gradients.mean(dim=0)
+        gradients = gradients / (torch.norm(mean))
+        variance_norm_grads_by_mean = gradients.var(dim=0)
+        variance_norm_grads_by_mean = torch.norm(variance_norm_grads_by_mean)
+
+        del gradients
+
+        norm_gradients = torch.stack(norm_gradients)
+        variance_norm_grads = norm_gradients.var(dim=0)
+        variance_norm_grads = torch.norm(variance_norm_grads)
+
+        del norm_gradients
+
+        X_batch, Y_batch = get_batch_small('val')
+        logits, loss = model(X_batch, Y_batch, use_alternate_attention=True)
+        total_params = sum(p.numel() for p in model.parameters())
+        gradients_for_hess = torch.autograd.grad(loss, model.parameters(), create_graph=True)
+        gradients_for_hess = torch.cat([grad.view(-1) for grad in gradients_for_hess if grad is not None])
+        if iter_num == 1:
+            vs = np.random.rand(gradients_for_hess.numel(),1)
+        pre_eigs, vs = calculate_pre_sharpness(model, gradients_for_hess, iter_num, vs)
+
+        del gradients_for_hess
 #####
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
@@ -278,7 +357,7 @@ while True:
         param_group['lr'] = lr
 
     # evaluate the loss on train/val sets and write checkpoints
-    if iter_num % eval_interval == 0 and master_process:
+    if ((iter_num % eval_interval == 0 and iter_num > 0) or (iter_num == 1)) and master_process:
         losses = estimate_loss()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
@@ -288,7 +367,10 @@ while True:
                 "val/loss": losses['val'],
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage
-                "variance": norm_of_variance.item(),
+                "variance": variance.item(),
+                "variance_norm_grads": variance_norm_grads.item(),
+                "variance_norm_grads_by_mean": variance_norm_grads_by_mean.item(),
+                "sharpness": pre_eigs.item(),
             })
         if losses['val'] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses['val']
