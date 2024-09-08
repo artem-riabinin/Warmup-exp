@@ -36,6 +36,7 @@ import scipy.sparse.linalg as linalg
 # I/O
 out_dir = 'out'
 eval_interval = 200
+eval_interval_2 = 500
 log_interval = 1
 eval_iters = 200
 eval_only = False # if True, script exits right after the first eval
@@ -249,30 +250,10 @@ def estimate_loss():
 def calculate_pre_sharpness(model, gradients, iter_num, vs, m_iter: int = 30, tol: float = 1e-4):
     device = next(model.parameters()).device
     
-    for param_group in optimizer.param_groups:
-        beta1, beta2 = param_group['betas']
-        epsilon = param_group['eps']
-    
-    vt = []
-    for param in model.parameters():
-        param_state = optimizer.state[param] 
-        if 'exp_avg_sq' in param_state:
-            exp_avg_sq = param_state['exp_avg_sq']
-            vt.append(exp_avg_sq.flatten())
-    if vt:
-        vt = torch.cat(vt)
-    
-    def compute_Pdiag(vt, beta1, beta2, epsilon, iter_num):
-        vhat = vt / (1 - beta2**(iter_num))
-        Pdiag = (torch.sqrt(vhat) + epsilon) * (1 - beta1**(iter_num))
-        return Pdiag
-    Pdiag = compute_Pdiag(vt, beta1, beta2, epsilon, iter_num)
-    Pdiag = 1
-    
     def hvp(v):
         v = torch.tensor(v, dtype=torch.float32, device=device).flatten()
         hvp = torch.autograd.grad(gradients @ v, model.parameters(), retain_graph=True)
-        res = (torch.cat([grad.view(-1) for grad in hvp if grad is not None]) / Pdiag).cpu().numpy().reshape(v.numel(), 1)
+        res = (torch.cat([grad.view(-1) for grad in hvp if grad is not None])).cpu().numpy().reshape(v.numel(), 1)
         return res
     
     vs = vs / np.linalg.norm(vs, axis=0, keepdims=True)
@@ -306,14 +287,14 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
 #####
-    if ((iter_num % eval_interval == 0 and iter_num > 0) or (iter_num == 1)) and master_process:
+    if ((iter_num % eval_interval == 0 and iter_num <= 4000) or (iter_num % eval_interval_2 == 0 and iter_num > 4000)) and master_process:
 
         X_batch, Y_batch = get_batch('val')
         gradients = []
         norm_gradients = []
-        for i in range(X.size(0)):
-            x_sample = X[i:i+1]
-            y_sample = Y[i:i+1]
+        for i in range(X_batch.size(0)):
+            x_sample = X_batch[i:i+1]
+            y_sample = Y_batch[i:i+1]
             with ctx:
                 sample_logits, sample_loss = model(x_sample, y_sample)         
             grads = torch.autograd.grad(sample_loss, model.parameters())
@@ -345,11 +326,11 @@ while True:
         total_params = sum(p.numel() for p in model.parameters())
         gradients_for_hess = torch.autograd.grad(loss, model.parameters(), create_graph=True)
         gradients_for_hess = torch.cat([grad.view(-1) for grad in gradients_for_hess if grad is not None])
-        if iter_num == 1:
+        if iter_num == 0:
             vs = np.random.rand(gradients_for_hess.numel(),1)
         pre_eigs, vs = calculate_pre_sharpness(model, gradients_for_hess, iter_num, vs)
 
-        del gradients_for_hess
+        del gradients_for_hess, X_batch, Y_batch
 #####
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
@@ -357,7 +338,7 @@ while True:
         param_group['lr'] = lr
 
     # evaluate the loss on train/val sets and write checkpoints
-    if ((iter_num % eval_interval == 0 and iter_num > 0) or (iter_num == 1)) and master_process:
+    if ((iter_num % eval_interval == 0 and iter_num <= 4000) or (iter_num % eval_interval_2 == 0 and iter_num > 4000)) and master_process:
         losses = estimate_loss()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
