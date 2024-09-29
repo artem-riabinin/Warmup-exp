@@ -143,7 +143,6 @@ class WorkerThread(threading.Thread):
             indicies = wcfg.input_for_cmd[1]
             subset = torch.utils.data.Subset(wcfg.train_set, indicies)   
             minibatch_loader = DataLoader(subset, batch_size=ncfg.batch_size, shuffle=False, drop_last=False, pin_memory=False, collate_fn=None)
-            print(indicies[1])
 
             # Evaluate in the previous point SGD within b' batch 
             prev_train_mode = torch.is_grad_enabled()  
@@ -238,9 +237,8 @@ def main():
     print("******************************************************************")
     cpu_device   = torch.device("cpu")      # CPU device
     gpu_device_0 = torch.device('cuda:0')   # Selected GPU (index 0)
-    gpu_device_1 = torch.device('cuda:1')
 
-    available_devices = [gpu_device_0, gpu_device_1]
+    available_devices = [gpu_device_0]
     master_device = available_devices[0]
     print("******************************************************************")
     global nn_config, workers_config
@@ -377,8 +375,7 @@ def main():
 
         for i in range(kWorkers):
             worker_cfgs[i].cmd = "bcast_g_c0"
-            worker_cfgs[i].input_for_cmd = [gk_for_device[worker_cfgs[i].device], torch.randperm(len(train_sets[i]))[:batch_size_for_worker]]
-            print('worker_device: ', worker_cfgs[i].device)
+            worker_cfgs[i].input_for_cmd = [gk_for_device[worker_cfgs[i].device], torch.randperm(len(train_sets[i]))[:batch_size_for_worker].to(worker_cfgs[i].device)]
             worker_cfgs[i].input_cmd_ready.release()
                 
         for i in range(kWorkers): 
