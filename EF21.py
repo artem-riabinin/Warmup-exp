@@ -377,7 +377,7 @@ def main():
 
         for i in range(kWorkers):
             worker_cfgs[i].cmd = "bcast_g_c0"
-            worker_cfgs[i].input_for_cmd = [gk_for_device[worker_cfgs[i].device], torch.randperm(len(train_sets[i]))[:batch_size_for_worker].to(worker_cfgs[i].device)]
+            worker_cfgs[i].input_for_cmd = [gk_for_device[worker_cfgs[i].device], torch.randperm(len(train_sets[i]))[:batch_size_for_worker]]
             print('worker_device: ', worker_cfgs[i].device)
             worker_cfgs[i].input_cmd_ready.release()
                 
