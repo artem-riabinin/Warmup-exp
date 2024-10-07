@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=pytorch_training
-#SBATCH --nodes=4
-#SBATCH --ntasks-per-node=4
-#SBATCH --gpus-per-node=4
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=64G
 #SBATCH --time=00:30:00
