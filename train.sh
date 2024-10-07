@@ -5,7 +5,7 @@
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=64G
-#SBATCH --time=24:00:00
+#SBATCH --time=00:30:00
 #SBATCH --output=output_%j.log
 
 TOTAL_PROCESSES=$(($SLURM_NNODES * $SLURM_NTASKS_PER_NODE))
