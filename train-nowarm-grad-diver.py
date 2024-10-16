@@ -258,20 +258,20 @@ running_mfu = -1.0
 while True:
 #####
     if ((iter_num % eval_interval == 0 and iter_num <= 4000 and iter_num > 0) or (iter_num % eval_interval_2 == 0 and iter_num > 4000) or (iter_num == 1)) and master_process:
-    K = 20
-    norms = []
-    mean_grads = None
-    for k in range(K):
-        X_batch, Y_batch = get_batch('train')  
-        _, loss_k = model(X_batch, Y_batch)   
-        grads = torch.autograd.grad(loss_k, model.parameters())  # Compute gradients
-        grads = torch.cat([grad.view(-1) for grad in grads if grad is not None])
-        norms.append(torch.norm(grads))
-        if mean_grads is None:
-            mean_grads = torch.zeros_like(grads)  # Initialize to zeros on the first iteration    
-        mean_grads += grads  # Accumulate gradients
-    mean_grads = mean_grads / K
-    grad_diversity = torch.mean(norms) / torch.norm(mean_grads)
+        K = 20
+        norms = []
+        mean_grads = None
+        for k in range(K):
+            X_batch, Y_batch = get_batch('train')  
+            _, loss_k = model(X_batch, Y_batch)   
+            grads = torch.autograd.grad(loss_k, model.parameters())  # Compute gradients
+            grads = torch.cat([grad.view(-1) for grad in grads if grad is not None])
+            norms.append(torch.norm(grads))
+            if mean_grads is None:
+                mean_grads = torch.zeros_like(grads)  # Initialize to zeros on the first iteration    
+            mean_grads += grads  # Accumulate gradients
+        mean_grads = mean_grads / K
+        grad_diversity = torch.mean(norms) / torch.norm(mean_grads)
 #####
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
