@@ -290,29 +290,29 @@ class GPT(nn.Module):
 
         return model
 
-def configure_optimizers(self, learning_rate, device_type):
-    # start with all of the candidate parameters
-    param_dict = {pn: p for pn, p in self.named_parameters()}
-    # filter out those that do not require grad
-    param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
+    def configure_optimizers(self, learning_rate, device_type):
+        # start with all of the candidate parameters
+        param_dict = {pn: p for pn, p in self.named_parameters()}
+        # filter out those that do not require grad
+        param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
     
-    # create optim groups
-    decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
-    nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
-    optim_groups = [
-        {'params': decay_params},  # SignSGD doesn't use weight decay by default
-        {'params': nodecay_params}
-    ]
-    num_decay_params = sum(p.numel() for p in decay_params)
-    num_nodecay_params = sum(p.numel() for p in nodecay_params)
-    print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
-    print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+        # create optim groups
+        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
+        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+        optim_groups = [
+            {'params': decay_params},  # SignSGD doesn't use weight decay by default
+            {'params': nodecay_params}
+        ]
+        num_decay_params = sum(p.numel() for p in decay_params)
+        num_nodecay_params = sum(p.numel() for p in nodecay_params)
+        print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
+        print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
 
-    # Create SignSGD optimizer
-    optimizer = SignSGD(optim_groups, lr=learning_rate)
-    print(f"using SignSGD")
+        # Create SignSGD optimizer
+        optimizer = SignSGD(optim_groups, lr=learning_rate)
+        print(f"using SignSGD")
 
-    return optimizer
+        return optimizer
 
     def estimate_mfu(self, fwdbwd_per_iter, dt):
         """ estimate model flops utilization (MFU) in units of A100 bfloat16 peak FLOPS """
