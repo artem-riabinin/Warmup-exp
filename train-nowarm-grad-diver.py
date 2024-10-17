@@ -257,7 +257,7 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
 #####
-    if ((iter_num % eval_interval == 0 and iter_num <= 4000 and iter_num > 0) or (iter_num % eval_interval_2 == 0 and iter_num > 4000) or (iter_num == 1)) and master_process:
+    if ((iter_num % eval_interval == 0 and iter_num <= 4000 and iter_num > 0) or (iter_num % eval_interval_2 == 0 and iter_num > 4000) or (iter_num == 0)) and master_process:
         K = 20
         norms = []
         mean_grads = None
