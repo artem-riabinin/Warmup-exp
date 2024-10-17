@@ -271,7 +271,7 @@ while True:
                 mean_grads = torch.zeros_like(grads)  # Initialize to zeros on the first iteration    
             mean_grads += grads  # Accumulate gradients
         mean_grads = mean_grads / K
-        grad_diversity = torch.mean(norms) / torch.norm(mean_grads)
+        grad_diversity = torch.mean(torch.tensor(norms)) / torch.norm(mean_grads)
 #####
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
