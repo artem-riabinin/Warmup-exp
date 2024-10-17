@@ -27,7 +27,7 @@ import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
-from model-signSGD import GPTConfig, GPT
+from model_signSGD import GPTConfig, GPT
 
 import scipy.sparse.linalg as linalg
 
