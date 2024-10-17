@@ -264,14 +264,15 @@ while True:
         for k in range(K):
             X_batch, Y_batch = get_batch('train')  
             _, loss_k = model(X_batch, Y_batch)   
-            grads = torch.autograd.grad(loss_k, model.parameters())  # Compute gradients
+            grads = torch.autograd.grad(loss_k, model.parameters()) 
             grads = torch.cat([grad.view(-1) for grad in grads if grad is not None])
-            norms.append(torch.norm(grads))
+            norms.append(torch.norm(grads)**2)
             if mean_grads is None:
-                mean_grads = torch.zeros_like(grads)  # Initialize to zeros on the first iteration    
-            mean_grads += grads  # Accumulate gradients
+                mean_grads = torch.zeros_like(grads)      
+            mean_grads += grads  
+            del grads
         mean_grads = mean_grads / K
-        grad_diversity = torch.mean(torch.tensor(norms)) / torch.norm(mean_grads)
+        grad_diversity = torch.mean(torch.tensor(norms)) / torch.norm(mean_grads)**2
 #####
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
