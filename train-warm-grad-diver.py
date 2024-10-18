@@ -273,6 +273,8 @@ while True:
             mean_grads += grads  
             del grads
         mean_grads = mean_grads / (k+1)
+        print(k+1)
+        print(torch.tensor(norms).size())
         grad_diversity = torch.mean(torch.tensor(norms)) / torch.norm(mean_grads)**2
 #####
     # determine and set the learning rate for this iteration
