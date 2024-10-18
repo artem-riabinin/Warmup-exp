@@ -258,12 +258,13 @@ running_mfu = -1.0
 while True:
 #####
     if ((iter_num % eval_interval == 0 and iter_num <= 4000 and iter_num > 0) or (iter_num % eval_interval_2 == 0 and iter_num > 4000) or (iter_num == 0)) and master_process:
-        K = 20
         norms = []
         mean_grads = None
-        for k in range(K):
-            X_batch, Y_batch = get_batch('train')  
-            _, loss_k = model(X_batch, Y_batch)   
+        X_batch, Y_batch = get_batch('train')
+        for k in range(X_batch.size(0)):
+            x_sample = X_batch[k:k+1]
+            y_sample = Y_batch[k:k+1]  
+            _, loss_k = model(x_sample, y_sample)   
             grads = torch.autograd.grad(loss_k, model.parameters()) 
             grads = torch.cat([grad.view(-1) for grad in grads if grad is not None])
             norms.append(torch.norm(grads)**2)
@@ -271,7 +272,7 @@ while True:
                 mean_grads = torch.zeros_like(grads)      
             mean_grads += grads  
             del grads
-        mean_grads = mean_grads / K
+        mean_grads = mean_grads / (k+1)
         grad_diversity = torch.mean(torch.tensor(norms)) / torch.norm(mean_grads)**2
 #####
     # determine and set the learning rate for this iteration
