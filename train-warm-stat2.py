@@ -277,7 +277,7 @@ while True:
         prev_params = torch.cat([p.view(-1) for p in model.parameters()])
         print(torch.norm(prev_gradients).item())
         
-    if (((iter_num - 10) % eval_interval == 0 and (iter_num - 10) <= 4000) or ((iter_num - 10) % eval_interval_2 == 0 and (iter_num - 10) > 4000) or ((iter_num - 10) == 0)) and master_process:     
+    if (((iter_num - 1) % eval_interval == 0 and (iter_num - 1) <= 4000) or ((iter_num - 1) % eval_interval_2 == 0 and (iter_num - 1) > 4000) or ((iter_num - 1) == 0)) and master_process:     
         logits, loss = model(X, Y)
         gradients = torch.autograd.grad(loss, model.parameters())
         gradients = torch.cat([grad.view(-1) for grad in gradients if grad is not None])
@@ -292,7 +292,7 @@ while True:
         param_group['lr'] = lr
 
     # evaluate the loss on train/val sets and write checkpoints
-    if (((iter_num - 10) % eval_interval == 0 and (iter_num - 10) <= 4000) or ((iter_num - 10) % eval_interval_2 == 0 and (iter_num - 10) > 4000) or ((iter_num - 10) == 0)) and master_process: 
+    if (((iter_num - 1) % eval_interval == 0 and (iter_num - 1) <= 4000) or ((iter_num - 1) % eval_interval_2 == 0 and (iter_num - 1) > 4000) or ((iter_num - 1) == 0)) and master_process: 
         losses = estimate_loss()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
