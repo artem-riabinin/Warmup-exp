@@ -35,7 +35,7 @@ import scipy.sparse.linalg as linalg
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
 out_dir = 'out'
-eval_interval = 30
+eval_interval = 100
 eval_interval_2 = 500
 log_interval = 1
 eval_iters = 200
@@ -254,7 +254,8 @@ def get_lr(it):
     decay_ratio = (it - warmup_iters) / (lr_decay_iters - warmup_iters)
     assert 0 <= decay_ratio <= 1
     coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff ranges 0..1
-    return min_lr + coeff * (learning_rate - min_lr)
+    #return min_lr + coeff * (learning_rate - min_lr)
+    return learning_rate
 
 # logging
 if wandb_log and master_process:
