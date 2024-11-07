@@ -277,8 +277,8 @@ while True:
         prev_params = torch.cat([p.view(-1) for p in model.parameters()])
         prev_iter = iter_num
         print(prev_iter)
-
-    if (iter_num == prev_iter + 10) and master_process:        
+        
+    if (((iter_num - 10) % eval_interval == 0 and (iter_num - 10) <= 4000) or ((iter_num - 10) % eval_interval_2 == 0 and (iter_num - 10) > 4000) or ((iter_num - 10) == 0)) and master_process:     
         logits, loss = model(X, Y)
         gradients = torch.autograd.grad(loss, model.parameters())
         gradients = torch.cat([grad.view(-1) for grad in gradients if grad is not None])
