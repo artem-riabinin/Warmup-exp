@@ -269,23 +269,21 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
 #####
-    print(iter_num)
-    first_block_done = False
+    prev_iter = 0
     if ((iter_num % eval_interval == 0 and iter_num <= 4000) or (iter_num % eval_interval_2 == 0 and iter_num > 4000) or (iter_num == 0)) and master_process:
-        prev_iter = iter_num
         logits, loss = model(X, Y)
         prev_gradients = torch.autograd.grad(loss, model.parameters())  
         prev_params = torch.cat([p.view(-1) for p in model.parameters()])
-        first_block_done = True
+        prev_iter = iter_num
+        print(prev_iter)
 
-    if (iter_num == prev_iter + 1) and master_process:        
+    if (iter_num == prev_iter + 10) and master_process:        
         logits, loss = model(X, Y)
         gradients = torch.autograd.grad(loss, model.parameters())
         gradients = torch.cat([grad.view(-1) for grad in gradients if grad is not None])
         params = torch.cat([p.view(-1) for p in model.parameters()])
         estimated_smoothness = torch.norm(gradients - prev_gradients) / torch.norm(params - prev_params)
         norm_gradient = torch.norm(gradients)
-        first_block_done = False
         
 #####
     # determine and set the learning rate for this iteration
@@ -294,7 +292,7 @@ while True:
         param_group['lr'] = lr
 
     # evaluate the loss on train/val sets and write checkpoints
-    if (iter_num == prev_iter + 1) and master_process: 
+    if (iter_num == prev_iter + 10) and master_process: 
         losses = estimate_loss()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
