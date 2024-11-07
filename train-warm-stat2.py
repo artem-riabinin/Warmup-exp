@@ -35,8 +35,8 @@ import scipy.sparse.linalg as linalg
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
 out_dir = 'out'
-eval_interval = 50
-eval_interval_2 = 50
+eval_interval = 100
+eval_interval_2 = 500
 log_interval = 1
 eval_iters = 200
 eval_only = False # if True, script exits right after the first eval
@@ -269,20 +269,20 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
 #####
-    if iter_num == 0 and master_process:
-        prev_model_params = [param.clone().detach().requires_grad_(True) for param in model.parameters()]
-
-    if ((iter_num % eval_interval == 0 and iter_num <= 4000 and iter_num > 0) or 
-        (iter_num % eval_interval_2 == 0 and iter_num > 4000)) and master_process:
+    if ((iter_num % eval_interval == 0 and iter_num <= 4000 and iter_num > 0) or (iter_num % eval_interval_2 == 0 and iter_num > 4000)) and master_process:
         logits, loss = model(X, Y)
-        prev_gradients = torch.autograd.grad(loss, prev_model_params, retain_graph=True)
-        prev_gradients = torch.cat([grad.view(-1) for grad in prev_gradients if grad is not None])
+        prev_gradients = torch.autograd.grad(loss, model.parameters())  
+        prev_params = torch.cat([p.view(-1) for p in model.parameters()])
+        prev_iter = iter_num
+
+    if (iter_num == prev_iter + 1) and master_process:        
+        logits, loss = model(X, Y)
         gradients = torch.autograd.grad(loss, model.parameters())
         gradients = torch.cat([grad.view(-1) for grad in gradients if grad is not None])
-        param_diffs = torch.cat([(p1 - p2).view(-1) for p1, p2 in zip(model.parameters(), prev_model_params)])
-        estimated_smoothness = torch.norm(gradients - prev_gradients) / torch.norm(param_diffs)
+        params = torch.cat([p.view(-1) for p in model.parameters()])
+        estimated_smoothness = torch.norm(gradients - prev_gradients) / torch.norm(params - prev_params)
         norm_gradient = torch.norm(gradients)
-        prev_model_params = [param.clone().detach().requires_grad_(True) for param in model.parameters()]
+        
 #####
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
@@ -290,7 +290,7 @@ while True:
         param_group['lr'] = lr
 
     # evaluate the loss on train/val sets and write checkpoints
-    if ((iter_num % eval_interval == 0 and iter_num <= 4000 and iter_num > 0) or (iter_num % eval_interval_2 == 0 and iter_num > 4000)) and master_process:
+    if (iter_num == prev_iter + 1) and master_process: 
         losses = estimate_loss()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
