@@ -270,13 +270,11 @@ running_mfu = -1.0
 while True:
 #####
     print(iter_num)
-    prev_iter = 0
     if ((iter_num % eval_interval == 0 and iter_num <= 4000) or (iter_num % eval_interval_2 == 0 and iter_num > 4000) or (iter_num == 0)) and master_process:
+        prev_iter = iter_num
         logits, loss = model(X, Y)
         prev_gradients = torch.autograd.grad(loss, model.parameters())  
         prev_params = torch.cat([p.view(-1) for p in model.parameters()])
-        prev_iter = iter_num
-        print(prev_iter)
 
     if (iter_num == prev_iter + 1) and master_process:        
         logits, loss = model(X, Y)
