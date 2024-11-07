@@ -35,7 +35,7 @@ import scipy.sparse.linalg as linalg
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
 out_dir = 'out'
-eval_interval = 100
+eval_interval = 50
 eval_interval_2 = 500
 log_interval = 1
 eval_iters = 200
@@ -269,7 +269,7 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
 #####
-    prev_iter = 0
+
     if ((iter_num % eval_interval == 0 and iter_num <= 4000) or (iter_num % eval_interval_2 == 0 and iter_num > 4000) or (iter_num == 0)) and master_process:
         logits, loss = model(X, Y)
         prev_gradients = torch.autograd.grad(loss, model.parameters())  
@@ -278,7 +278,7 @@ while True:
         prev_iter = iter_num
         print(prev_iter)
 
-    if (iter_num == prev_iter + 20) and master_process:        
+    if (iter_num == prev_iter + 10) and master_process:        
         logits, loss = model(X, Y)
         gradients = torch.autograd.grad(loss, model.parameters())
         gradients = torch.cat([grad.view(-1) for grad in gradients if grad is not None])
@@ -293,7 +293,7 @@ while True:
         param_group['lr'] = lr
 
     # evaluate the loss on train/val sets and write checkpoints
-    if (iter_num == prev_iter + 20) and master_process: 
+    if (iter_num == prev_iter + 10) and master_process: 
         losses = estimate_loss()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
