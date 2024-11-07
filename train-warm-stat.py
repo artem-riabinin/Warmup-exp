@@ -271,8 +271,8 @@ while True:
 #####
     if ((iter_num % eval_interval == 0 and iter_num <= 4000) or (iter_num % eval_interval_2 == 0 and iter_num > 4000)) and master_process:
 
-        X_batch = X[:6]
-        Y_batch = Y[:6]
+        X_batch = X[:4]
+        Y_batch = Y[:4]
         logits, loss = model(X_batch, Y_batch, use_alternate_attention=True)
         gradients_for_hess = torch.autograd.grad(loss, model.parameters(), create_graph=True)
         gradients_for_hess = torch.cat([grad.view(-1) for grad in gradients_for_hess if grad is not None])
