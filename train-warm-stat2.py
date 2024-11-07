@@ -269,7 +269,7 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
 #####
-    if ((iter_num % eval_interval == 0 and iter_num <= 4000 and iter_num > 0) or (iter_num % eval_interval_2 == 0 and iter_num > 4000)) and master_process:
+    if ((iter_num % eval_interval == 0 and iter_num <= 4000) or (iter_num % eval_interval_2 == 0 and iter_num > 4000)) and master_process:
         logits, loss = model(X, Y)
         prev_gradients = torch.autograd.grad(loss, model.parameters())  
         prev_params = torch.cat([p.view(-1) for p in model.parameters()])
