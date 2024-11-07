@@ -269,13 +269,12 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
 #####
-
     if ((iter_num % eval_interval == 0 and iter_num <= 4000) or (iter_num % eval_interval_2 == 0 and iter_num > 4000) or (iter_num == 0)) and master_process:
         logits, loss = model(X, Y)
         prev_gradients = torch.autograd.grad(loss, model.parameters())  
         prev_gradients = torch.cat([grad.view(-1) for grad in prev_gradients if grad is not None])
         prev_params = torch.cat([p.view(-1) for p in model.parameters()])
-        print('1 prev', torch.norm(prev_params).item())
+        print(X[0][0].item())
         
     if (((iter_num - 1) % eval_interval == 0 and (iter_num - 1) <= 4000) or ((iter_num - 1) % eval_interval_2 == 0 and (iter_num - 1) > 4000) or ((iter_num - 1) == 0)) and master_process:     
         logits, loss = model(X, Y)
@@ -283,10 +282,8 @@ while True:
         gradients = torch.cat([grad.view(-1) for grad in gradients if grad is not None])
         params = torch.cat([p.view(-1) for p in model.parameters()])
         estimated_smoothness = torch.norm(gradients - prev_gradients) / torch.norm(params - prev_params)
-        norm_gradient = torch.norm(gradients)
-        print('2 prev', torch.norm(prev_params).item())
-        print('2 new', torch.norm(params).item())
-        
+        norm_gradient = torch.norm(gradients) 
+        print(X[0][0].item())       
 #####
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
