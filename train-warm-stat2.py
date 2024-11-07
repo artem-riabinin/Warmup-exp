@@ -275,7 +275,7 @@ while True:
         prev_gradients = torch.autograd.grad(loss, model.parameters())  
         prev_gradients = torch.cat([grad.view(-1) for grad in prev_gradients if grad is not None])
         prev_params = torch.cat([p.view(-1) for p in model.parameters()])
-        print(torch.norm(prev_gradients).item())
+        print('1 prev', torch.norm(prev_params).item())
         
     if (((iter_num - 1) % eval_interval == 0 and (iter_num - 1) <= 4000) or ((iter_num - 1) % eval_interval_2 == 0 and (iter_num - 1) > 4000) or ((iter_num - 1) == 0)) and master_process:     
         logits, loss = model(X, Y)
@@ -284,6 +284,8 @@ while True:
         params = torch.cat([p.view(-1) for p in model.parameters()])
         estimated_smoothness = torch.norm(gradients - prev_gradients) / torch.norm(params - prev_params)
         norm_gradient = torch.norm(gradients)
+        print('2 prev', torch.norm(prev_params).item())
+        print('2 new', torch.norm(params).item())
         
 #####
     # determine and set the learning rate for this iteration
