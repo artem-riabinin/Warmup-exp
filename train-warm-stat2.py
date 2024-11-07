@@ -35,7 +35,7 @@ import scipy.sparse.linalg as linalg
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
 out_dir = 'out'
-eval_interval = 50
+eval_interval = 30
 eval_interval_2 = 500
 log_interval = 1
 eval_iters = 200
@@ -275,8 +275,7 @@ while True:
         prev_gradients = torch.autograd.grad(loss, model.parameters())  
         prev_gradients = torch.cat([grad.view(-1) for grad in prev_gradients if grad is not None])
         prev_params = torch.cat([p.view(-1) for p in model.parameters()])
-        prev_iter = iter_num
-        print(prev_iter)
+        print(torch.norm(prev_gradients).item())
         
     if (((iter_num - 10) % eval_interval == 0 and (iter_num - 10) <= 4000) or ((iter_num - 10) % eval_interval_2 == 0 and (iter_num - 10) > 4000) or ((iter_num - 10) == 0)) and master_process:     
         logits, loss = model(X, Y)
