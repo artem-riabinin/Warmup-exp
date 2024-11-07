@@ -270,11 +270,13 @@ running_mfu = -1.0
 while True:
 #####
     print(iter_num)
+    first_block_done = False
     if ((iter_num % eval_interval == 0 and iter_num <= 4000) or (iter_num % eval_interval_2 == 0 and iter_num > 4000) or (iter_num == 0)) and master_process:
         prev_iter = iter_num
         logits, loss = model(X, Y)
         prev_gradients = torch.autograd.grad(loss, model.parameters())  
         prev_params = torch.cat([p.view(-1) for p in model.parameters()])
+        first_block_done = True
 
     if (iter_num == prev_iter + 1) and master_process:        
         logits, loss = model(X, Y)
@@ -283,6 +285,7 @@ while True:
         params = torch.cat([p.view(-1) for p in model.parameters()])
         estimated_smoothness = torch.norm(gradients - prev_gradients) / torch.norm(params - prev_params)
         norm_gradient = torch.norm(gradients)
+        first_block_done = False
         
 #####
     # determine and set the learning rate for this iteration
