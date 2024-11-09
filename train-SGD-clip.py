@@ -229,19 +229,7 @@ def estimate_loss():
         out[split] = losses.mean()
     model.train()
     return out
-#####
-def calculate_sharpness(model, gradients, iter_num, vs, m_iter: int = 30, tol: float = 1e-4):
     
-    def hvp(v):
-        v = torch.tensor(v, dtype=torch.float32, device=device).flatten()
-        hvp = torch.autograd.grad(gradients @ v, model.parameters(), retain_graph=True)
-        res = (torch.cat([grad.view(-1) for grad in hvp if grad is not None])).cpu().numpy().reshape(v.numel(), 1)
-        return res
-    
-    vs = vs / np.linalg.norm(vs, axis=0, keepdims=True)
-    eigs, eigvs = linalg.lobpcg(hvp, vs, maxiter=m_iter, tol=tol)
-    return eigs, eigvs
-#####
 # learning rate decay scheduler (cosine with warmup)
 def get_lr(it):
     return learning_rate
@@ -258,21 +246,7 @@ local_iter_num = 0 # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
-#####
-    if ((iter_num % eval_interval == 0 and iter_num <= 4000) or (iter_num % eval_interval_2 == 0 and iter_num > 4000) or (iter_num == 0)) and master_process:
-        logits, loss = model(X, Y)
-        prev_gradients = torch.autograd.grad(loss, model.parameters())  
-        prev_gradients = torch.cat([grad.view(-1) for grad in prev_gradients if grad is not None])
-        prev_params = torch.cat([p.view(-1) for p in model.parameters()])
-        
-    if (((iter_num - 1) % eval_interval == 0 and (iter_num - 1) <= 4000) or ((iter_num - 1) % eval_interval_2 == 0 and (iter_num - 1) > 4000) or ((iter_num - 1) == 0)) and master_process:     
-        logits, loss = model(X, Y)
-        gradients = torch.autograd.grad(loss, model.parameters())
-        gradients = torch.cat([grad.view(-1) for grad in gradients if grad is not None])
-        params = torch.cat([p.view(-1) for p in model.parameters()])
-        estimated_smoothness = torch.norm(gradients - prev_gradients) / torch.norm(params - prev_params)
-        norm_gradient = torch.norm(gradients)        
-#####
+
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
     for param_group in optimizer.param_groups:
@@ -314,7 +288,8 @@ while True:
         X, Y = get_batch('train')
         # backward pass, with gradient scaling if training in fp16
         scaler.scale(loss).backward()
-    if (((iter_num-1) % eval_interval == 0 and (iter_num-1) <= 4000) or ((iter_num-1) % eval_interval_2 == 0 and (iter_num-1) > 4000) or ((iter_num-1) == 0)) and master_process: 
+        
+    if (((iter_num - 1) % eval_interval == 0 and (iter_num - 1) <= 4000) or ((iter_num - 1) % eval_interval_2 == 0 and (iter_num - 1) > 4000) or ((iter_num - 1) == 0)) and master_process: 
         gradient_vector = []
         for param in model.parameters():
             if param.grad is not None:
@@ -336,6 +311,36 @@ while True:
     # clip the gradient
     if grad_clip != 0.0:
         scaler.unscale_(optimizer)
+        
+        if ((iter_num % eval_interval == 0 and iter_num <= 4000) or (iter_num % eval_interval_2 == 0 and iter_num > 4000) or (iter_num == 0)) and master_process:
+            prev_gradient_vector = []
+            for param in model.parameters():
+                if param.grad is not None:
+                    prev_gradient_vector.append(param.grad.view(-1)) 
+            prev_gradient_vector = torch.cat(gradient_vector)        
+            prev_params = torch.cat([p.view(-1) for p in model.parameters() if p.grad is not None])
+        
+        if (((iter_num - 1) % eval_interval == 0 and (iter_num - 1) <= 4000) or ((iter_num - 1) % eval_interval_2 == 0 and (iter_num - 1) > 4000) or ((iter_num - 1) == 0)) and master_process: 
+            gradient_vector = []
+            for param in model.parameters():
+                if param.grad is not None:
+                    gradient_vector.append(param.grad.view(-1)) 
+            gradient_vector = torch.cat(gradient_vector)
+            params = torch.cat([p.view(-1) for p in model.parameters() if p.grad is not None])
+            norm_grad = torch.norm(gradient_vector)
+            estimated_smoothness = torch.norm(gradient_vector - prev_gradient_vector) / torch.norm(gradient_vector - prev_gradient_vector)
+            learn_rate = lr * torch.min(torch.tensor(1.0), 1 / norm_grad)
+            if wandb_log:
+                wandb.log({
+                    "iter": iter_num,
+                    "train/loss": losses['train'],
+                    "val/loss": losses['val'],
+                    "lr": learn_rate,
+                    "mfu": running_mfu*100, # convert to percentage
+                    "estimated_smoothness": estimated_smoothness.item(),
+                    "norm_grad": norm_grad.item(),
+                })
+        
         torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
     # step the optimizer and scaler if training in fp16
     scaler.step(optimizer)
