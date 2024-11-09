@@ -309,7 +309,7 @@ while True:
             gradient_vector = torch.cat(gradient_vector)
             params = torch.cat([p.view(-1) for p in model.parameters() if p.grad is not None])
             norm_grad = torch.norm(gradient_vector)
-            estimated_smoothness = torch.norm(gradient_vector - prev_gradient_vector) / torch.norm(gradient_vector - prev_gradient_vector)
+            estimated_smoothness = torch.norm(gradient_vector - prev_gradient_vector) / torch.norm(params - prev_params)
             learn_rate = lr * torch.min(torch.tensor(1.0), 1 / norm_grad)
             if wandb_log:
                 wandb.log({

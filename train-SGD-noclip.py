@@ -290,7 +290,7 @@ while True:
         scaler.scale(loss).backward()
 
     # clip the gradient
-    if grad_clip = 0.0:
+    if grad_clip == 0.0:
         scaler.unscale_(optimizer)
         
         if ((iter_num % eval_interval == 0 and iter_num <= 4000) or (iter_num % eval_interval_2 == 0 and iter_num > 4000) or (iter_num == 0)) and master_process:
@@ -309,7 +309,7 @@ while True:
             gradient_vector = torch.cat(gradient_vector)
             params = torch.cat([p.view(-1) for p in model.parameters() if p.grad is not None])
             norm_grad = torch.norm(gradient_vector)
-            estimated_smoothness = torch.norm(gradient_vector - prev_gradient_vector) / torch.norm(gradient_vector - prev_gradient_vector)
+            estimated_smoothness = torch.norm(gradient_vector - prev_gradient_vector) / torch.norm(params - prev_params)
             learn_rate = lr
             if wandb_log:
                 wandb.log({
