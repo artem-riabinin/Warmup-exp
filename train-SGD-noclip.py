@@ -340,7 +340,7 @@ while True:
                 gradient_vector.append(param.grad.view(-1)) 
         gradient_vector = torch.cat(gradient_vector)
         norm_grad = torch.norm(gradient_vector)
-        learn_rate = lr * torch.min(1, 1 / norm_grad)
+        learn_rate = lr * torch.min(torch.tensor(1.0), 1 / norm_grad)
     optimizer.zero_grad(set_to_none=True)
 
     # timing and logging

@@ -280,13 +280,6 @@ while True:
 
     # evaluate the loss on train/val sets and write checkpoints
     if (((iter_num - 1) % eval_interval == 0 and (iter_num - 1) <= 4000) or ((iter_num - 1) % eval_interval_2 == 0 and (iter_num - 1) > 4000) or ((iter_num - 1) == 0)) and master_process: 
-        gradient_vector = []
-        for param in model.parameters():
-            if param.grad is not None:
-                gradient_vector.append(param.grad.view(-1)) 
-        gradient_vector = torch.cat(gradient_vector)
-        norm_grad = torch.norm(gradient_vector)
-        learn_rate = lr * torch.min(1, 1 / norm_grad)
         losses = estimate_loss()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
@@ -340,6 +333,14 @@ while True:
     scaler.step(optimizer)
     scaler.update()
     # flush the gradients as soon as we can, no need for this memory anymore
+    if (((iter_num) % eval_interval == 0 and (iter_num) <= 4000) or ((iter_num) % eval_interval_2 == 0 and (iter_num) > 4000) or ((iter_num) == 0)) and master_process: 
+        gradient_vector = []
+        for param in model.parameters():
+            if param.grad is not None:
+                gradient_vector.append(param.grad.view(-1)) 
+        gradient_vector = torch.cat(gradient_vector)
+        norm_grad = torch.norm(gradient_vector)
+        learn_rate = lr * torch.min(torch.tensor(1.0), 1 / norm_grad)
     optimizer.zero_grad(set_to_none=True)
 
     # timing and logging
