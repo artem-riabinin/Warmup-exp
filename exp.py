@@ -16,12 +16,12 @@ import random
 # Set parameters
 learning_rate = 0.1
 batch_size = 128
-epochs = 200
+epochs = 300
 input_dim = 784  # 28x28 images from Fashion-MNIST
 hidden_dim = 64
 output_dim = 10  # 10 classes in Fashion-MNIST
 c_1 = 1
-c_11 = 0.01
+c_11 = 0.1
 num_seeds = 3  # Number of different seeds
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -216,7 +216,7 @@ axs[1,0].set_aspect('auto')
 # Plot 4
 axs[1,1].plot(mean_inner_products2, label='Mean', linewidth=1.5)
 axs[1,1].fill_between(range(epochs), min_inner_products2, max_inner_products2, alpha=0.3, label='Min-Max')
-axs[1,1].set_title(r'$\left\langle \nabla f_{\xi}(x^k), x^k - x^K \right\rangle - c_1 \|\nabla f_{\xi}(x^k)\|^2$, $c_1=0.01$')
+axs[1,1].set_title(r'$\left\langle \nabla f_{\xi}(x^k), x^k - x^K \right\rangle - c_1 \|\nabla f_{\xi}(x^k)\|^2$, $c_1=0.1$')
 axs[1,1].set_xlabel('epoch k')
 axs[1,1].set_ylabel(r'$\left\langle \nabla f_{\xi}(x^k), x^k - x^K \right\rangle - c_1 \|\nabla f_{\xi}(x^k)\|^2$')
 axs[1,1].legend()
